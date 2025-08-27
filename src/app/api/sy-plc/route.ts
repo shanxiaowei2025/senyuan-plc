@@ -3,6 +3,272 @@ import { prisma } from '@/lib/prisma';
 import { getUTC8TimeString } from '@/lib/utils';
 
 /**
+ * @swagger
+ * /sy-plc:
+ *   get:
+ *     summary: 查询SyPlc数据
+ *     description: 获取SyPlc数据记录，支持分页和条件筛选
+ *     tags:
+ *       - SY-PLC数据管理
+ *     parameters:
+ *       - in: query
+ *         name: model
+ *         schema:
+ *           type: number
+ *         required: false
+ *         description: 型号筛选 (modelD2040)
+ *       - in: query
+ *         name: cageNodes
+ *         schema:
+ *           type: number
+ *         required: false
+ *         description: 笼子节数筛选 (cageNodesD2044)
+ *       - in: query
+ *         name: angle
+ *         schema:
+ *           type: number
+ *         required: false
+ *         description: 主轴角度筛选 (spindleAngleD4012)
+ *       - in: query
+ *         name: cageNum
+ *         schema:
+ *           type: number
+ *         required: false
+ *         description: 笼子编号筛选 (cageNumD2048)
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *         required: false
+ *         description: 页码
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 1000
+ *           default: 50
+ *         required: false
+ *         description: 每页数据量
+ *     responses:
+ *       200:
+ *         description: 成功获取SyPlc数据
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                         description: 记录ID
+ *                       modelD2040:
+ *                         type: number
+ *                         description: 型号
+ *                         example: 1.0
+ *                       cageNodesD2044:
+ *                         type: number
+ *                         description: 笼子节数
+ *                         example: 8.0
+ *                       cageNumD2048:
+ *                         type: number
+ *                         description: 笼子编号
+ *                         example: 1.0
+ *                       spindleAngleD4012:
+ *                         type: number
+ *                         description: 主轴角度
+ *                         example: 45.0
+ *                       actualRebarLength:
+ *                         type: number
+ *                         description: 钢筋实际长度
+ *                         example: 1200.5
+ *                       theoreticalLength:
+ *                         type: number
+ *                         description: 理论长度
+ *                         example: 1200.0
+ *                       difference:
+ *                         type: number
+ *                         description: 差值
+ *                         example: 0.5
+ *                       totalNodesD2052:
+ *                         type: number
+ *                         description: 总节数
+ *                         example: 10.0
+ *                       createdAt:
+ *                         type: string
+ *                         format: date-time
+ *                         description: 创建时间
+ *                       updatedAt:
+ *                         type: string
+ *                         format: date-time
+ *                         description: 更新时间
+ *                 count:
+ *                   type: integer
+ *                   description: 当前页数据数量
+ *                 totalCount:
+ *                   type: integer
+ *                   description: 总数据数量
+ *                 page:
+ *                   type: integer
+ *                   description: 当前页码
+ *                 limit:
+ *                   type: integer
+ *                   description: 每页数据量
+ *                 totalPages:
+ *                   type: integer
+ *                   description: 总页数
+ *                 hasNextPage:
+ *                   type: boolean
+ *                   description: 是否有下一页
+ *                 hasPreviousPage:
+ *                   type: boolean
+ *                   description: 是否有上一页
+ *                 timestamp:
+ *                   type: string
+ *                   format: date-time
+ *                   description: 响应时间戳
+ *       500:
+ *         description: 服务器错误
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *   post:
+ *     summary: 创建或更新SyPlc数据记录
+ *     description: 根据型号、笼子节数、笼子编号、主轴角度查重，如果重复则更新，否则创建新记录（规则3专用）
+ *     tags:
+ *       - SY-PLC数据管理
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               modelD2040:
+ *                 type: number
+ *                 description: 型号
+ *                 example: 1.0
+ *               cageNodesD2044:
+ *                 type: number
+ *                 description: 笼子节数
+ *                 example: 8.0
+ *               cageNumD2048:
+ *                 type: number
+ *                 description: 笼子编号
+ *                 example: 1.0
+ *               spindleAngleD4012:
+ *                 type: number
+ *                 description: 主轴角度
+ *                 example: 45.0
+ *               actualRebarLength:
+ *                 type: number
+ *                 description: 钢筋实际长度
+ *                 example: 1200.5
+ *               theoreticalLength:
+ *                 type: number
+ *                 description: 理论长度
+ *                 example: 1200.0
+ *               difference:
+ *                 type: number
+ *                 description: 差值
+ *                 example: 0.5
+ *               totalNodesD2052:
+ *                 type: number
+ *                 description: 总节数
+ *                 example: 10.0
+ *             required:
+ *               - modelD2040
+ *               - cageNodesD2044
+ *               - cageNumD2048
+ *               - spindleAngleD4012
+ *               - theoreticalLength
+ *               - totalNodesD2052
+ *     responses:
+ *       200:
+ *         description: 成功创建或更新数据记录
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 action:
+ *                   type: string
+ *                   enum: [created, updated]
+ *                   description: 执行的操作类型
+ *                   example: "created"
+ *                 message:
+ *                   type: string
+ *                   example: "数据记录创建成功"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                       description: 记录ID
+ *                     modelD2040:
+ *                       type: number
+ *                       description: 型号
+ *                     cageNodesD2044:
+ *                       type: number
+ *                       description: 笼子节数
+ *                     cageNumD2048:
+ *                       type: number
+ *                       description: 笼子编号
+ *                     spindleAngleD4012:
+ *                       type: number
+ *                       description: 主轴角度
+ *                     actualRebarLength:
+ *                       type: number
+ *                       description: 钢筋实际长度
+ *                     theoreticalLength:
+ *                       type: number
+ *                       description: 理论长度
+ *                     difference:
+ *                       type: number
+ *                       description: 差值
+ *                     totalNodesD2052:
+ *                       type: number
+ *                       description: 总节数
+ *                     createdAt:
+ *                       type: string
+ *                       format: date-time
+ *                       description: 创建时间
+ *                     updatedAt:
+ *                       type: string
+ *                       format: date-time
+ *                       description: 更新时间
+ *                 timestamp:
+ *                   type: string
+ *                   format: date-time
+ *                   description: 响应时间戳
+ *       400:
+ *         description: 请求参数错误
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       500:
+ *         description: 服务器错误
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+
+/**
  * 查询SyPlc数据
  * GET /api/sy-plc - 获取所有数据
  * GET /api/sy-plc?model=xxx&cageNodes=1&angle=45 - 按条件查询
