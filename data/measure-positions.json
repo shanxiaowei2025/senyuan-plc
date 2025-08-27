@@ -1,0 +1,82 @@
+[
+  {
+    "id": "position-1",
+    "name": "钢筋测量位置1",
+    "value": -10.3,
+    "description": "测量位置1的参数值",
+    "plcAddress": "D2000",
+    "isActive": true,
+    "createdAt": "2025-08-27T01:50:07.576Z",
+    "updatedAt": "2025-08-27T01:50:07.576Z"
+  },
+  {
+    "id": "position-2",
+    "name": "钢筋测量位置2",
+    "value": 10.4,
+    "description": "测量位置2的参数值",
+    "plcAddress": "D2001",
+    "isActive": true,
+    "createdAt": "2025-08-27T01:50:07.576Z",
+    "updatedAt": "2025-08-27T01:50:07.576Z"
+  },
+  {
+    "id": "position-3",
+    "name": "钢筋测量位置3",
+    "value": 20.6,
+    "description": "测量位置3的参数值",
+    "plcAddress": "D2002",
+    "isActive": true,
+    "createdAt": "2025-08-27T01:50:07.576Z",
+    "updatedAt": "2025-08-27T01:50:07.576Z"
+  },
+  {
+    "id": "position-4",
+    "name": "钢筋测量位置4",
+    "value": 30.9,
+    "description": "测量位置4的参数值",
+    "plcAddress": "D2003",
+    "isActive": true,
+    "createdAt": "2025-08-27T01:50:07.576Z",
+    "updatedAt": "2025-08-27T01:50:07.576Z"
+  },
+  {
+    "id": "position-5",
+    "name": "钢筋测量位置5",
+    "value": 40.7,
+    "description": "测量位置5的参数值",
+    "plcAddress": "D2004",
+    "isActive": true,
+    "createdAt": "2025-08-27T01:50:07.576Z",
+    "updatedAt": "2025-08-27T01:50:07.576Z"
+  },
+  {
+    "id": "position-6",
+    "name": "钢筋测量位置6",
+    "value": 50.6,
+    "description": "测量位置6的参数值",
+    "plcAddress": "D2005",
+    "isActive": true,
+    "createdAt": "2025-08-27T01:50:07.576Z",
+    "updatedAt": "2025-08-27T01:50:07.576Z"
+  },
+  {
+    "id": "position-7",
+    "name": "钢筋测量位置7",
+    "value": 60.9,
+    "description": "测量位置7的参数值",
+    "plcAddress": "D2006",
+    "isActive": true,
+    "createdAt": "2025-08-27T01:50:07.576Z",
+    "updatedAt": "2025-08-27T01:50:07.576Z"
+  },
+  {
+    "id": "position-8",
+    "name": "钢筋测量位置8",
+    "value": 70.4,
+    "description": "测量位置8的参数值",
+    "plcAddress": "D2007",
+    "isActive": true,
+    "createdAt": "2025-08-27T01:50:07.576Z",
+    "updatedAt": "2025-08-27T01:50:07.576Z"
+  }
+]

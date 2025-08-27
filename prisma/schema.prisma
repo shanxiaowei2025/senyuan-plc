@@ -1,0 +1,143 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  password  String
+  role      String   @default("USER")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  logs      Log[]
+  profile   Profile?
+
+  @@map("users")
+}
+
+model Profile {
+  id         String  @id @default(cuid())
+  userId     String  @unique
+  avatar     String?
+  phone      String?
+  department String?
+  position   String?
+  bio        String?
+  user       User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("profiles")
+}
+
+model Log {
+  id        String   @id @default(cuid())
+  userId    String
+  action    String
+  resource  String?
+  details   String?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("logs")
+}
+
+model Device {
+  id          String        @id @default(cuid())
+  name        String
+  type        String
+  model       String?
+  location    String?
+  status      String        @default("OFFLINE")
+  isActive    Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  deviceData  DeviceData[]
+  deviceLogs  DeviceLog[]
+  maintenance Maintenance[]
+
+  @@map("devices")
+}
+
+model DeviceLog {
+  id        String   @id @default(cuid())
+  deviceId  String
+  level     String   @default("INFO")
+  message   String
+  source    String?
+  details   String?
+  timestamp DateTime @default(now())
+  device    Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@map("device_logs")
+}
+
+model DeviceData {
+  id        String   @id @default(cuid())
+  deviceId  String
+  dataType  String
+  value     String
+  unit      String?
+  timestamp DateTime @default(now())
+  device    Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@map("device_data")
+}
+
+model Maintenance {
+  id          String    @id @default(cuid())
+  deviceId    String
+  type        String
+  description String
+  performedBy String?
+  startDate   DateTime
+  endDate     DateTime?
+  status      String    @default("SCHEDULED")
+  notes       String?
+  createdAt   DateTime  @default(now())
+  device      Device    @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@map("maintenance")
+}
+
+model WeldingRecord {
+  id          String    @id @default(cuid())
+  deviceId    String
+  workpieceId String?
+  operatorId  String?
+  startTime   DateTime
+  endTime     DateTime?
+  current     Float?
+  voltage     Float?
+  quality     String    @default("PENDING")
+  notes       String?
+  createdAt   DateTime  @default(now())
+
+  @@map("welding_records")
+}
+
+model SyPlc {
+  id                String   @id @default(cuid())
+  modelD2040        Float
+  cageNodesD2044    Float
+  cageNumD2048      Float
+  spindleAngleD4012 Float
+  actualRebarLength Float?
+  theoreticalLength Float
+  difference        Float?
+  totalNodesD2052   Float
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([createdAt])
+  @@index([modelD2040])
+  @@index([createdAt, modelD2040])
+  @@map("sy_plc")
+}
