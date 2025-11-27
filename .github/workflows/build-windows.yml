@@ -38,9 +38,12 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-pnpm-store-
     
-    - name: 创建.env文件
+    - name: 创建必要的目录和文件
       run: |
         echo 'DATABASE_URL="file:./dev.db"' > .env
+        if not exist "data" mkdir data
+        echo [] > data\measure-positions.json
+      shell: cmd
     
     - name: 安装依赖
       run: pnpm install --no-frozen-lockfile
@@ -54,6 +57,9 @@ jobs:
     
     - name: 构建Next.js应用
       run: pnpm run build
+      env:
+        NODE_ENV: production
+        SKIP_ENV_VALIDATION: true
     
     - name: 打包Windows可执行文件
       run: pnpm exec electron-builder --win --x64

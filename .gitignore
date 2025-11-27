@@ -63,3 +63,7 @@ server.js
 # documentation drafts
 *-draft.md
 *-temp.md
+
+# data files (but keep directory)
+data/*
+!data/.gitkeep
