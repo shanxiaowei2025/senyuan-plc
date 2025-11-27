@@ -38,11 +38,19 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-pnpm-store-
     
+    - name: 创建.env文件
+      run: |
+        echo 'DATABASE_URL="file:./dev.db"' > .env
+    
     - name: 安装依赖
       run: pnpm install --no-frozen-lockfile
     
     - name: 生成Prisma客户端
       run: pnpm run db:generate
+    
+    - name: 初始化数据库
+      run: pnpm run db:push
+      continue-on-error: true
     
     - name: 构建Next.js应用
       run: pnpm run build
