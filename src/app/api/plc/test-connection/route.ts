@@ -19,8 +19,8 @@ import ModbusRTU from 'modbus-serial';
  *               host:
  *                 type: string
  *                 description: PLC主机IP地址
- *                 default: "192.168.55.199"
- *                 example: "192.168.55.199"
+ *                 default: "192.168.6.6"
+*                 example: "192.168.6.6"
  *               port:
  *                 type: integer
  *                 description: PLC端口号
@@ -77,7 +77,7 @@ import ModbusRTU from 'modbus-serial';
  *                   properties:
  *                     host:
  *                       type: string
- *                       example: "192.168.55.199"
+ *                       example: "192.168.6.6"
  *                     port:
  *                       type: integer
  *                       example: 502
@@ -145,7 +145,7 @@ export async function POST(request: Request) {
   try {
     // 从请求体中获取PLC配置
     const body = await request.json();
-    const host = body.host || '192.168.55.199';
+    const host = body.host || '192.168.6.6';
     const port = parseInt(body.port || '502');
     const unitId = parseInt(body.unitId || '1');
     const timeout = parseInt(body.timeout || '10000');

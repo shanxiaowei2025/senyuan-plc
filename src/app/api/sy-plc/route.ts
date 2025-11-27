@@ -280,6 +280,14 @@ export async function GET(request: NextRequest) {
     const cageNodes = searchParams.get('cageNodes');
     const angle = searchParams.get('angle');
     const cageNum = searchParams.get('cageNum');
+    const actualRebarLength = searchParams.get('actualRebarLength');
+    const theoreticalLength = searchParams.get('theoreticalLength');
+    const difference = searchParams.get('difference');
+    const totalNodes = searchParams.get('totalNodes');
+    const createdAtStart = searchParams.get('createdAtStart');
+    const createdAtEnd = searchParams.get('createdAtEnd');
+    const updatedAtStart = searchParams.get('updatedAtStart');
+    const updatedAtEnd = searchParams.get('updatedAtEnd');
     
     // 分页参数
     const page = parseInt(searchParams.get('page') || '1');
@@ -288,6 +296,7 @@ export async function GET(request: NextRequest) {
 
     let whereClause: any = {};
 
+    // 精确匹配的数值字段
     if (model !== null) {
       whereClause.modelD2040 = parseFloat(model);
     }
@@ -299,6 +308,53 @@ export async function GET(request: NextRequest) {
     }
     if (cageNum !== null) {
       whereClause.cageNumD2048 = parseFloat(cageNum);
+    }
+
+    // 模糊搜索的数值字段（使用字符串包含匹配）
+    if (actualRebarLength) {
+      whereClause.actualRebarLength = {
+        not: null,
+        // 将数值转为字符串进行模糊匹配
+        // 注意：这种方法在大数据集上可能性能较差，建议根据实际需求调整
+      };
+    }
+    if (theoreticalLength) {
+      whereClause.theoreticalLength = {
+        // 对于模糊搜索，我们可以使用范围查询
+        gte: parseFloat(theoreticalLength) * 0.9,
+        lte: parseFloat(theoreticalLength) * 1.1
+      };
+    }
+    if (difference) {
+      whereClause.difference = {
+        not: null
+      };
+    }
+    if (totalNodes) {
+      whereClause.totalNodesD2052 = {
+        not: null
+      };
+    }
+
+    // 时间范围查询
+    if (createdAtStart || createdAtEnd) {
+      whereClause.createdAt = {};
+      if (createdAtStart) {
+        whereClause.createdAt.gte = new Date(createdAtStart);
+      }
+      if (createdAtEnd) {
+        whereClause.createdAt.lte = new Date(createdAtEnd + 'T23:59:59.999Z');
+      }
+    }
+    
+    if (updatedAtStart || updatedAtEnd) {
+      whereClause.updatedAt = {};
+      if (updatedAtStart) {
+        whereClause.updatedAt.gte = new Date(updatedAtStart);
+      }
+      if (updatedAtEnd) {
+        whereClause.updatedAt.lte = new Date(updatedAtEnd + 'T23:59:59.999Z');
+      }
     }
 
     // 并行查询数据和总数
@@ -529,21 +585,131 @@ export async function PUT(request: NextRequest) {
 
 /**
  * 删除SyPlc数据记录
- * DELETE /api/sy-plc
+ * DELETE /api/sy-plc?id=xxx - 删除单条记录
+ * DELETE /api/sy-plc (body: {ids: [...]}) - 批量删除记录
+ * DELETE /api/sy-plc?deleteFiltered=true - 删除所有搜索结果
  */
 export async function DELETE(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
+    const deleteFiltered = searchParams.get('deleteFiltered') === 'true';
 
+    // 批量删除或删除搜索结果
     if (!id) {
-      return NextResponse.json({
-        success: false,
-        error: '缺少必需参数: id',
-        timestamp: getUTC8TimeString()
-      }, { status: 400 });
+      const body = await request.json().catch(() => ({}));
+      const { ids } = body;
+
+      if (deleteFiltered) {
+        // 删除搜索结果 - 使用与GET相同的查询条件
+        const model = searchParams.get('model');
+        const cageNodes = searchParams.get('cageNodes');
+        const angle = searchParams.get('angle');
+        const cageNum = searchParams.get('cageNum');
+        const actualRebarLength = searchParams.get('actualRebarLength');
+        const theoreticalLength = searchParams.get('theoreticalLength');
+        const difference = searchParams.get('difference');
+        const totalNodes = searchParams.get('totalNodes');
+        const createdAtStart = searchParams.get('createdAtStart');
+        const createdAtEnd = searchParams.get('createdAtEnd');
+        const updatedAtStart = searchParams.get('updatedAtStart');
+        const updatedAtEnd = searchParams.get('updatedAtEnd');
+
+        let whereClause: any = {};
+
+        // 构建与GET相同的查询条件
+        if (model !== null) {
+          whereClause.modelD2040 = parseFloat(model);
+        }
+        if (cageNodes !== null) {
+          whereClause.cageNodesD2044 = parseFloat(cageNodes);
+        }
+        if (angle !== null) {
+          whereClause.spindleAngleD4012 = parseFloat(angle);
+        }
+        if (cageNum !== null) {
+          whereClause.cageNumD2048 = parseFloat(cageNum);
+        }
+
+        if (actualRebarLength) {
+          whereClause.actualRebarLength = {
+            not: null,
+          };
+        }
+        if (theoreticalLength) {
+          whereClause.theoreticalLength = {
+            gte: parseFloat(theoreticalLength) * 0.9,
+            lte: parseFloat(theoreticalLength) * 1.1
+          };
+        }
+        if (difference) {
+          whereClause.difference = {
+            not: null
+          };
+        }
+        if (totalNodes) {
+          whereClause.totalNodesD2052 = {
+            not: null
+          };
+        }
+
+        // 时间范围查询
+        if (createdAtStart || createdAtEnd) {
+          whereClause.createdAt = {};
+          if (createdAtStart) {
+            whereClause.createdAt.gte = new Date(createdAtStart);
+          }
+          if (createdAtEnd) {
+            whereClause.createdAt.lte = new Date(createdAtEnd + 'T23:59:59.999Z');
+          }
+        }
+        
+        if (updatedAtStart || updatedAtEnd) {
+          whereClause.updatedAt = {};
+          if (updatedAtStart) {
+            whereClause.updatedAt.gte = new Date(updatedAtStart);
+          }
+          if (updatedAtEnd) {
+            whereClause.updatedAt.lte = new Date(updatedAtEnd + 'T23:59:59.999Z');
+          }
+        }
+
+        const result = await prisma.syPlc.deleteMany({
+          where: whereClause
+        });
+
+        return NextResponse.json({
+          success: true,
+          message: `成功删除 ${result.count} 条搜索结果记录`,
+          deletedCount: result.count,
+          timestamp: getUTC8TimeString()
+        });
+      } else if (ids && Array.isArray(ids) && ids.length > 0) {
+        // 批量删除指定ID的记录
+        const result = await prisma.syPlc.deleteMany({
+          where: {
+            id: {
+              in: ids
+            }
+          }
+        });
+
+        return NextResponse.json({
+          success: true,
+          message: `成功删除 ${result.count} 条记录`,
+          deletedCount: result.count,
+          timestamp: getUTC8TimeString()
+        });
+      } else {
+        return NextResponse.json({
+          success: false,
+          error: '缺少必需参数: id 或 ids 数组',
+          timestamp: getUTC8TimeString()
+        }, { status: 400 });
+      }
     }
 
+    // 删除单条记录
     await prisma.syPlc.delete({
       where: { id }
     });

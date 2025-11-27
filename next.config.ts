@@ -9,7 +9,7 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true, // 构建时忽略TypeScript错误
   },
-  output: 'standalone', // 用于生产部署
+  // 不使用 standalone，直接打包完整的 node_modules
 };
 
 export default nextConfig;

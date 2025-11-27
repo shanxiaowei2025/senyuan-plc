@@ -209,7 +209,7 @@ export function checkPLCConnection(): boolean {
  *               host:
  *                 type: string
  *                 description: PLC设备的IP地址
- *                 example: "192.168.55.199"
+ *                 example: "192.168.6.6"
  *               port:
  *                 type: number
  *                 description: Modbus TCP端口

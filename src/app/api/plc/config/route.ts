@@ -26,7 +26,7 @@ import { plcService, savePLCConfig } from '@/lib/plc-service'
  *                     host:
  *                       type: string
  *                       description: PLC主机IP地址
- *                       example: "192.168.55.199"
+ *                       example: "192.168.6.6"
  *                     port:
  *                       type: integer
  *                       description: PLC端口号
@@ -96,7 +96,7 @@ import { plcService, savePLCConfig } from '@/lib/plc-service'
  *               host:
  *                 type: string
  *                 description: PLC主机IP地址
- *                 example: "192.168.55.199"
+ *                 example: "192.168.6.6"
  *               port:
  *                 type: integer
  *                 description: PLC端口号
@@ -219,7 +219,7 @@ export async function POST(request: NextRequest) {
     if (!ipRegex.test(host)) {
       return NextResponse.json({ 
         success: false, 
-        error: '请输入有效的IP地址格式，例如: 192.168.55.199' 
+        error: '请输入有效的IP地址格式，例如: 192.168.6.6' 
       }, { status: 400 })
     }
 

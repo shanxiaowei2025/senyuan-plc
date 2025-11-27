@@ -8,7 +8,7 @@ export let connectionError: string | null = null
 
 // PLC配置
 export let plcConfig: PLCConfig = {
-  host: process.env.PLC_HOST || '192.168.55.199',
+  host: process.env.PLC_HOST || '192.168.6.6',
   port: parseInt(process.env.PLC_PORT || '502'),
   unitId: parseInt(process.env.PLC_UNIT_ID || '1'),
   timeout: parseInt(process.env.PLC_TIMEOUT || '15000'), // 增加超时时间到15秒

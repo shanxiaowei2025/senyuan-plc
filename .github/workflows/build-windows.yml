@@ -1,0 +1,78 @@
+name: Build Windows Executable
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+    
+    - name: 设置Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        
+    - name: 安装pnpm
+      uses: pnpm/action-setup@v2
+      with:
+        version: 8
+    
+    - name: 获取pnpm store目录
+      shell: bash
+      run: |
+        echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+    
+    - name: 缓存pnpm依赖
+      uses: actions/cache@v3
+      with:
+        path: ${{ env.STORE_PATH }}
+        key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+        restore-keys: |
+          ${{ runner.os }}-pnpm-store-
+    
+    - name: 安装依赖
+      run: pnpm install --no-frozen-lockfile
+    
+    - name: 生成Prisma客户端
+      run: pnpm run db:generate
+    
+    - name: 构建Next.js应用
+      run: pnpm run build
+    
+    - name: 打包Windows可执行文件
+      run: pnpm exec electron-builder --win --x64
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: 列出生成的文件
+      run: |
+        echo "生成的文件:"
+        dir dist-electron
+    
+    - name: 上传NSIS安装包
+      uses: actions/upload-artifact@v4
+      with:
+        name: 森源管理系统-Windows-Installer
+        path: dist-electron/*.exe
+        if-no-files-found: error
+    
+    - name: 上传blockmap文件
+      uses: actions/upload-artifact@v4
+      with:
+        name: blockmap-files
+        path: dist-electron/*.blockmap
+        if-no-files-found: warn
+    
+    - name: 构建成功通知
+      if: success()
+      run: |
+        echo "✅ Windows可执行文件构建成功！"
+        echo "📦 请在 Actions -> Artifacts 中下载"

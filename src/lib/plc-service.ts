@@ -449,7 +449,7 @@ export class PLCService extends EventEmitter {
 
 // 创建单例实例
 export const plcService = new PLCService({
-  host: '192.168.55.199',
+        host: '192.168.6.6',
   port: 502,
   unitId: 1,
   timeout: 5000,

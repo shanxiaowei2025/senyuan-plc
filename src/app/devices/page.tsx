@@ -207,7 +207,11 @@ export default function DevicesPage() {
     actualRebarLength: '',
     theoreticalLength: '',
     difference: '',
-    totalNodesD2052: ''
+    totalNodesD2052: '',
+    createdAtStart: '',
+    createdAtEnd: '',
+    updatedAtStart: '',
+    updatedAtEnd: ''
   })
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
@@ -317,17 +321,11 @@ export default function DevicesPage() {
   const [isWritingFloat, setIsWritingFloat] = useState<boolean>(false)
   const [isReadingCoil, setIsReadingCoil] = useState<boolean>(false)
   const [isWritingCoil, setIsWritingCoil] = useState<boolean>(false)
-  // 添加64位浮点寄存器状态
-  const [float64RegisterAddress, setFloat64RegisterAddress] = useState<number | string>(200)
-  const [float64RegisterValue, setFloat64RegisterValue] = useState<number | null>(null)
-  const [float64InputValue, setFloat64InputValue] = useState<string>('')
-  const [isReadingFloat64, setIsReadingFloat64] = useState<boolean>(false)
-  const [isWritingFloat64, setIsWritingFloat64] = useState<boolean>(false)
   const [plcError, setPlcError] = useState<string | null>(null)
   
   // 添加PLC配置相关状态
   const [plcConfig, setPlcConfig] = useState({
-    host: '192.168.55.199',
+            host: '192.168.6.6',
     port: 502,
     unitId: 1,
     timeout: 5000,
@@ -494,25 +492,6 @@ export default function DevicesPage() {
     }
   }
 
-  // 处理64位浮点寄存器地址输入
-  const handleFloat64AddressInputChange = (value: string) => {
-    setFloat64RegisterAddress(value)
-  }
-
-  const handleFloat64AddressBlur = () => {
-    const stringValue = String(float64RegisterAddress)
-    if (stringValue === '' || stringValue.trim() === '') {
-      setFloat64RegisterAddress(200) // 默认值
-    } else {
-      const numValue = parseInt(stringValue)
-      if (!isNaN(numValue) && numValue >= 0) {
-        setFloat64RegisterAddress(numValue)
-      } else {
-        setFloat64RegisterAddress(200) // 恢复默认值
-      }
-    }
-  }
-
   // 禁用数字输入框的滚轮事件
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault()
@@ -527,6 +506,32 @@ export default function DevicesPage() {
     }))
   }
 
+  // 执行高级搜索
+  const performAdvancedSearch = () => {
+    if (isAdvancedSearchOpen) {
+      // 构建API搜索参数
+      const apiSearchParams: Record<string, string> = {}
+      
+      // 映射前端字段到API参数
+      if (advancedSearchFields.modelD2040) apiSearchParams.model = advancedSearchFields.modelD2040
+      if (advancedSearchFields.cageNodesD2044) apiSearchParams.cageNodes = advancedSearchFields.cageNodesD2044
+      if (advancedSearchFields.cageNumD2048) apiSearchParams.cageNum = advancedSearchFields.cageNumD2048
+      if (advancedSearchFields.spindleAngleD4012) apiSearchParams.angle = advancedSearchFields.spindleAngleD4012
+      if (advancedSearchFields.actualRebarLength) apiSearchParams.actualRebarLength = advancedSearchFields.actualRebarLength
+      if (advancedSearchFields.theoreticalLength) apiSearchParams.theoreticalLength = advancedSearchFields.theoreticalLength
+      if (advancedSearchFields.difference) apiSearchParams.difference = advancedSearchFields.difference
+      if (advancedSearchFields.totalNodesD2052) apiSearchParams.totalNodes = advancedSearchFields.totalNodesD2052
+      if (advancedSearchFields.createdAtStart) apiSearchParams.createdAtStart = advancedSearchFields.createdAtStart
+      if (advancedSearchFields.createdAtEnd) apiSearchParams.createdAtEnd = advancedSearchFields.createdAtEnd
+      if (advancedSearchFields.updatedAtStart) apiSearchParams.updatedAtStart = advancedSearchFields.updatedAtStart
+      if (advancedSearchFields.updatedAtEnd) apiSearchParams.updatedAtEnd = advancedSearchFields.updatedAtEnd
+
+      fetchDatabaseRecords(apiSearchParams)
+    } else {
+      fetchDatabaseRecords()
+    }
+  }
+
   // 清空高级搜索
   const clearAdvancedSearch = () => {
     setAdvancedSearchFields({
@@ -537,7 +542,11 @@ export default function DevicesPage() {
       actualRebarLength: '',
       theoreticalLength: '',
       difference: '',
-      totalNodesD2052: ''
+      totalNodesD2052: '',
+      createdAtStart: '',
+      createdAtEnd: '',
+      updatedAtStart: '',
+      updatedAtEnd: ''
     })
   }
 
@@ -671,7 +680,7 @@ export default function DevicesPage() {
     // 验证IP地址格式
     const ipRegex = /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
     if (!ipRegex.test(plcConfig.host)) {
-      setConnectionError('请输入有效的IP地址格式，例如: 192.168.55.199');
+              setConnectionError('请输入有效的IP地址格式，例如: 192.168.6.6');
       setIsLoading(false);
       return;
     }
@@ -1088,89 +1097,6 @@ export default function DevicesPage() {
     }
   }
 
-  // 读取64位浮点数寄存器
-  const readFloat64Register = async () => {
-    if (!plcStatus?.isConnected) {
-      setPlcError('PLC未连接，需要先连接PLC才能进行操作')
-      return
-    }
-    
-    // 确保地址是数字类型
-    const address = typeof float64RegisterAddress === 'string' ? 
-      parseInt(float64RegisterAddress) || 200 : float64RegisterAddress
-    
-    setIsReadingFloat64(true)
-    setPlcError(null)
-    
-    try {
-      const response = await fetch(`/api/plc/float64?address=${address}`)
-      const result = await response.json()
-      
-      if (result.success) {
-        // API直接返回值，而不是嵌套的对象
-        setFloat64RegisterValue(result.data)
-        console.log(`读取到64位浮点数值: ${result.data}`)
-      } else {
-        setPlcError(result.error || '读取失败')
-      }
-    } catch (error) {
-      console.error('读取64位浮点寄存器失败:', error)
-      setPlcError('读取失败，请查看控制台')
-    } finally {
-      setIsReadingFloat64(false)
-    }
-  }
-  
-  // 写入64位浮点数寄存器
-  const writeFloat64Register = async () => {
-    if (!plcStatus?.isConnected) {
-      setPlcError('PLC未连接，需要先连接PLC才能进行操作')
-      return
-    }
-    
-    const value = parseFloat(float64InputValue)
-    if (isNaN(value)) {
-      setPlcError('请输入有效的浮点数')
-      return
-    }
-    
-    // 确保地址是数字类型
-    const address = typeof float64RegisterAddress === 'string' ? 
-      parseInt(float64RegisterAddress) || 200 : float64RegisterAddress
-    
-    setIsWritingFloat64(true)
-    setPlcError(null)
-    
-    try {
-      const response = await fetch('/api/plc/float64', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          address: address,
-          value: value
-        })
-      })
-      
-      const result = await response.json()
-      
-      if (result.success) {
-        setFloat64RegisterValue(value)
-        setFloat64InputValue('')
-      } else {
-        setPlcError(result.error || '写入失败')
-      }
-    } catch (error) {
-      console.error('写入64位浮点寄存器失败:', error)
-      setPlcError('写入失败，请查看控制台')
-    } finally {
-      setIsWritingFloat64(false)
-    }
-  }
-
-
-
   // 重置PLC配置为当前状态
   const resetConfig = () => {
     const savedPositions = loadMeasurePositions()
@@ -1178,7 +1104,7 @@ export default function DevicesPage() {
     // 添加空值检查
     if (plcStatus && plcStatus.config && plcStatus.config.host !== undefined) {
       setPlcConfig({
-        host: plcStatus.config.host || '192.168.55.199',
+                  host: plcStatus.config.host || '192.168.6.6',
         port: plcStatus.config.port || 502,
         unitId: plcStatus.config.unitId || 1,
         timeout: plcStatus.config.timeout || 5000,
@@ -1189,7 +1115,7 @@ export default function DevicesPage() {
     } else {
       // 如果plcStatus未初始化，使用默认值
       setPlcConfig({
-        host: '192.168.55.199',
+        host: '192.168.6.6',
         port: 502,
         unitId: 1,
         timeout: 5000,
@@ -1292,12 +1218,23 @@ export default function DevicesPage() {
   }, [plcStatus])
 
   // 获取SyPlc数据库记录
-  const fetchDatabaseRecords = async () => {
+  const fetchDatabaseRecords = async (searchParams?: Record<string, string>) => {
     if (!selectedDevice) return
     
     setIsLoadingRecords(true)
     try {
-      const response = await fetch('/api/sy-plc')
+      // 构建查询参数
+      const queryParams = new URLSearchParams()
+      if (searchParams) {
+        Object.entries(searchParams).forEach(([key, value]) => {
+          if (value && value.trim()) {
+            queryParams.append(key, value.trim())
+          }
+        })
+      }
+      
+      const url = `/api/sy-plc${queryParams.toString() ? `?${queryParams.toString()}` : ''}`
+      const response = await fetch(url)
       const data = await response.json()
       
       if (data.success && data.data) {
@@ -1337,6 +1274,23 @@ export default function DevicesPage() {
       fetchDatabaseRecords()
     }
   }, [activeTab, selectedDevice])
+
+  // 自动搜索功能：当高级搜索字段变化时，延迟执行搜索
+  useEffect(() => {
+    if (!isAdvancedSearchOpen || activeTab !== 'database') return
+
+    const hasSearchTerms = Object.values(advancedSearchFields).some(value => value.trim() !== '')
+    if (!hasSearchTerms) {
+      fetchDatabaseRecords() // 如果没有搜索条件，获取所有数据
+      return
+    }
+
+    const timeoutId = setTimeout(() => {
+      performAdvancedSearch()
+    }, 800) // 800ms 延迟，避免频繁请求
+
+    return () => clearTimeout(timeoutId)
+  }, [advancedSearchFields, isAdvancedSearchOpen, activeTab])
 
   // 过滤数据记录逻辑已移至优化的hooks中
 
@@ -1529,6 +1483,83 @@ export default function DevicesPage() {
     }
   }
 
+  // 删除检索结果
+  const handleDeleteFilteredRecords = async () => {
+    const recordCount = filteredSyPlcRecords.length
+    
+    if (recordCount === 0) {
+      alert('没有可删除的记录')
+      return
+    }
+
+    if (!confirm(`确定要删除当前检索到的所有 ${recordCount} 条记录吗？此操作无法撤销。`)) {
+      return
+    }
+    
+    try {
+      // 构建查询参数，与当前搜索条件保持一致
+      const params = new URLSearchParams()
+      params.append('deleteFiltered', 'true')
+      
+      // 添加搜索条件
+      if (advancedSearchFields.modelD2040) {
+        params.append('model', advancedSearchFields.modelD2040)
+      }
+      if (advancedSearchFields.cageNodesD2044) {
+        params.append('cageNodes', advancedSearchFields.cageNodesD2044)
+      }
+      if (advancedSearchFields.cageNumD2048) {
+        params.append('cageNum', advancedSearchFields.cageNumD2048)
+      }
+      if (advancedSearchFields.spindleAngleD4012) {
+        params.append('angle', advancedSearchFields.spindleAngleD4012)
+      }
+      if (advancedSearchFields.actualRebarLength) {
+        params.append('actualRebarLength', advancedSearchFields.actualRebarLength)
+      }
+      if (advancedSearchFields.theoreticalLength) {
+        params.append('theoreticalLength', advancedSearchFields.theoreticalLength)
+      }
+      if (advancedSearchFields.difference) {
+        params.append('difference', advancedSearchFields.difference)
+      }
+      if (advancedSearchFields.totalNodesD2052) {
+        params.append('totalNodes', advancedSearchFields.totalNodesD2052)
+      }
+      if (advancedSearchFields.createdAtStart) {
+        params.append('createdAtStart', advancedSearchFields.createdAtStart)
+      }
+      if (advancedSearchFields.createdAtEnd) {
+        params.append('createdAtEnd', advancedSearchFields.createdAtEnd)
+      }
+      if (advancedSearchFields.updatedAtStart) {
+        params.append('updatedAtStart', advancedSearchFields.updatedAtStart)
+      }
+      if (advancedSearchFields.updatedAtEnd) {
+        params.append('updatedAtEnd', advancedSearchFields.updatedAtEnd)
+      }
+
+      const response = await fetch(`/api/sy-plc?${params.toString()}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      })
+      
+      const result = await response.json()
+      
+      if (result.success) {
+        alert(`成功删除 ${result.deletedCount} 条记录`)
+        await fetchDatabaseRecords() // 刷新数据
+      } else {
+        alert(`删除失败: ${result.error}`)
+      }
+    } catch (error) {
+      console.error('删除检索结果失败:', error)
+      alert('删除检索结果失败，请检查网络连接')
+    }
+  }
+
   // 导出Excel文件
   const exportToExcel = () => {
     try {
@@ -1632,10 +1663,10 @@ export default function DevicesPage() {
                 {plcContext.isConnected && (
                   <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${
                     plcContext.isHeartbeatActive 
-                      ? 'text-pink-600 bg-pink-50 border-pink-200'
+                      ? 'text-green-600 bg-green-50 border-green-200'
                       : 'text-gray-600 bg-gray-50 border-gray-200'
                   }`}>
-                    <Heart className={`h-3 w-3 mr-1 ${plcContext.isHeartbeatActive ? 'text-pink-500 animate-pulse' : 'text-gray-400'}`} />
+                    <div className={`w-3 h-3 mr-1 rounded-full ${plcContext.isHeartbeatActive ? 'bg-green-500 heartbeat-blink' : 'bg-gray-400'}`}></div>
                     {plcContext.isHeartbeatActive ? '心跳活跃' : '心跳停止'}
                   </span>
                 )}
@@ -1945,7 +1976,7 @@ export default function DevicesPage() {
                     <Button 
                       variant="outline" 
                       size="sm" 
-                      onClick={fetchDatabaseRecords}
+                      onClick={() => fetchDatabaseRecords()}
                       disabled={isLoadingRecords}
                     >
                       <RefreshCw className={`h-4 w-4 mr-2 ${isLoadingRecords ? 'animate-spin' : ''}`} />
@@ -1968,6 +1999,18 @@ export default function DevicesPage() {
                       <Upload className="h-4 w-4 mr-2" />
                       导出
                     </Button>
+                    {isAdvancedSearchOpen && (
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={handleDeleteFilteredRecords}
+                        disabled={filteredSyPlcRecords.length === 0}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200 hover:border-red-300"
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        删除检索结果
+                      </Button>
+                    )}
                   </div>
                 </div>
                 
@@ -1975,80 +2018,124 @@ export default function DevicesPage() {
                 {isAdvancedSearchOpen && (
                   <Card className="bg-gray-50">
                     <CardContent className="pt-4">
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">型号 (modelD2040)</label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                        <div className="space-y-2">
+                          <label className="block text-sm font-medium text-gray-700">型号 (modelD2040)</label>
                           <Input
                             placeholder="搜索型号..."
                             value={advancedSearchFields.modelD2040}
                             onChange={(e) => handleAdvancedSearchChange('modelD2040', e.target.value)}
+                            className="w-full"
                           />
                         </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">笼子节数 (cageNodesD2044)</label>
+                        <div className="space-y-2">
+                          <label className="block text-sm font-medium text-gray-700">笼子节数 (cageNodesD2044)</label>
                           <Input
                             placeholder="搜索笼子节数..."
                             value={advancedSearchFields.cageNodesD2044}
                             onChange={(e) => handleAdvancedSearchChange('cageNodesD2044', e.target.value)}
+                            className="w-full"
                           />
                         </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">笼子编号 (cageNumD2048)</label>
+                        <div className="space-y-2">
+                          <label className="block text-sm font-medium text-gray-700">笼子编号 (cageNumD2048)</label>
                           <Input
                             placeholder="搜索笼子编号..."
                             value={advancedSearchFields.cageNumD2048}
                             onChange={(e) => handleAdvancedSearchChange('cageNumD2048', e.target.value)}
+                            className="w-full"
                           />
                         </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">主轴角度 (spindleAngleD4012)</label>
+                        <div className="space-y-2">
+                          <label className="block text-sm font-medium text-gray-700">主轴角度 (spindleAngleD4012)</label>
                           <Input
                             placeholder="搜索主轴角度..."
                             value={advancedSearchFields.spindleAngleD4012}
                             onChange={(e) => handleAdvancedSearchChange('spindleAngleD4012', e.target.value)}
+                            className="w-full"
                           />
                         </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">实际钢筋长度 (actualRebarLength)</label>
+                        <div className="space-y-2">
+                          <label className="block text-sm font-medium text-gray-700">实际钢筋长度 (actualRebarLength)</label>
                           <Input
                             placeholder="搜索钢筋长度..."
                             value={advancedSearchFields.actualRebarLength}
                             onChange={(e) => handleAdvancedSearchChange('actualRebarLength', e.target.value)}
+                            className="w-full"
                           />
                         </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">理论长度 (theoreticalLength)</label>
+                        <div className="space-y-2">
+                          <label className="block text-sm font-medium text-gray-700">理论长度 (theoreticalLength)</label>
                           <Input
                             placeholder="搜索理论长度..."
                             value={advancedSearchFields.theoreticalLength}
                             onChange={(e) => handleAdvancedSearchChange('theoreticalLength', e.target.value)}
+                            className="w-full"
                           />
                         </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">差值 (difference)</label>
+                        <div className="space-y-2">
+                          <label className="block text-sm font-medium text-gray-700">差值 (difference)</label>
                           <Input
                             placeholder="搜索差值..."
                             value={advancedSearchFields.difference}
                             onChange={(e) => handleAdvancedSearchChange('difference', e.target.value)}
+                            className="w-full"
                           />
                         </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">总节数 (totalNodesD2052)</label>
+                        <div className="space-y-2">
+                          <label className="block text-sm font-medium text-gray-700">总节数 (totalNodesD2052)</label>
                           <Input
                             placeholder="搜索总节数..."
                             value={advancedSearchFields.totalNodesD2052}
                             onChange={(e) => handleAdvancedSearchChange('totalNodesD2052', e.target.value)}
+                            className="w-full"
                           />
                         </div>
-                        <div className="flex items-end">
-                          <div className="text-sm text-gray-600 bg-blue-50 p-3 rounded-lg">
-                            <div className="font-medium mb-1">搜索说明：</div>
-                            <div>• 多个字段同时搜索使用 AND 逻辑</div>
-                            <div>• 支持部分匹配，大小写不敏感</div>
-                            <div>• 留空的字段将被忽略</div>
+                      </div>
+                      
+                      {/* 时间搜索区域 */}
+                      <div className="mt-6 pt-4 border-t border-gray-200">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                          <div className="space-y-2">
+                            <label className="block text-sm font-medium text-gray-700">创建时间开始</label>
+                            <Input
+                              type="date"
+                              value={advancedSearchFields.createdAtStart}
+                              onChange={(e) => handleAdvancedSearchChange('createdAtStart', e.target.value)}
+                              className="w-full"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="block text-sm font-medium text-gray-700">创建时间结束</label>
+                            <Input
+                              type="date"
+                              value={advancedSearchFields.createdAtEnd}
+                              onChange={(e) => handleAdvancedSearchChange('createdAtEnd', e.target.value)}
+                              className="w-full"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="block text-sm font-medium text-gray-700">更新时间开始</label>
+                            <Input
+                              type="date"
+                              value={advancedSearchFields.updatedAtStart}
+                              onChange={(e) => handleAdvancedSearchChange('updatedAtStart', e.target.value)}
+                              className="w-full"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="block text-sm font-medium text-gray-700">更新时间结束</label>
+                            <Input
+                              type="date"
+                              value={advancedSearchFields.updatedAtEnd}
+                              onChange={(e) => handleAdvancedSearchChange('updatedAtEnd', e.target.value)}
+                              className="w-full"
+                            />
                           </div>
                         </div>
                       </div>
+
+
                     </CardContent>
                   </Card>
                 )}
@@ -2604,8 +2691,8 @@ export default function DevicesPage() {
                       {plcContext.isConnected && (
                         <div className="flex items-center">
                           <span className="text-sm text-gray-600 mr-2">心跳状态:</span>
-                          <span className={`px-3 py-1 rounded-md flex items-center ${plcContext.isHeartbeatActive ? 'bg-pink-100 text-pink-700' : 'bg-gray-100 text-gray-700'}`}>
-                            <Heart className={`h-3 w-3 mr-1 ${plcContext.isHeartbeatActive ? 'text-pink-500 animate-pulse' : 'text-gray-400'}`} />
+                          <span className={`px-3 py-1 rounded-md flex items-center ${plcContext.isHeartbeatActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}`}>
+                            <div className={`w-3 h-3 mr-2 rounded-full ${plcContext.isHeartbeatActive ? 'bg-green-500 heartbeat-blink' : 'bg-gray-400'}`}></div>
                             {plcContext.isHeartbeatActive ? '活跃(M4005)' : '停止'}
                           </span>
                         </div>
@@ -2704,76 +2791,6 @@ export default function DevicesPage() {
                         </div>
                         <p className="text-xs text-gray-500 mt-1">
                           例如: 3.14, -2.5, 0.01
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                
-                {/* 64位浮点寄存器读写 */}
-                <div className="bg-white border border-gray-200 rounded-lg p-5 shadow-sm">
-                  <h4 className="text-base font-medium text-gray-900 mb-4 flex items-center">
-                    <Gauge className="h-5 w-5 mr-2 text-purple-600" />
-                    64位浮点寄存器读写
-                  </h4>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <div className="mb-4">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">寄存器地址</label>
-                        <div className="flex space-x-2">
-                          <Input 
-                            type="number" 
-                            value={float64RegisterAddress}
-                            onChange={(e) => handleFloat64AddressInputChange(e.target.value)}
-                            onBlur={handleFloat64AddressBlur}
-                            onWheel={handleWheel}
-                            className="w-32"
-                          />
-                          <Button 
-                            variant="outline" 
-                            onClick={readFloat64Register}
-                            disabled={!plcStatus?.isConnected || isReadingFloat64}
-                          >
-                            {isReadingFloat64 ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-                            读取
-                          </Button>
-                        </div>
-                      </div>
-                      
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">当前值</label>
-                        <div className="bg-gray-50 border border-gray-200 rounded-md p-3">
-                          {float64RegisterValue !== null ? (
-                            <span className="text-lg text-gray-900">{typeof float64RegisterValue === 'number' ? float64RegisterValue.toFixed(4) : float64RegisterValue}</span>
-                          ) : (
-                            <span className="text-gray-500">尚未读取</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <div className="mb-4">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">写入值</label>
-                        <div className="flex space-x-2">
-                          <Input 
-                            type="text" 
-                            value={float64InputValue}
-                            onChange={(e) => setFloat64InputValue(e.target.value)}
-                            placeholder="输入64位浮点数"
-                          />
-                          <Button 
-                            variant="outline" 
-                            onClick={writeFloat64Register}
-                            disabled={!plcStatus?.isConnected || isWritingFloat64 || !float64InputValue}
-                          >
-                            {isWritingFloat64 ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
-                            写入
-                          </Button>
-                        </div>
-                        <p className="text-xs text-gray-500 mt-1">
-                          例如: 3.14, -2.71
                         </p>
                       </div>
                     </div>
@@ -2888,8 +2905,8 @@ export default function DevicesPage() {
                       {plcStatus?.isConnected && (
                         <div className="flex items-center">
                           <span className="text-sm text-gray-600 mr-2">心跳状态:</span>
-                          <span className={`px-3 py-1 rounded-md flex items-center ${plcContext.isHeartbeatActive ? 'bg-pink-100 text-pink-700' : 'bg-gray-100 text-gray-700'}`}>
-                            <Heart className={`h-3 w-3 mr-1 ${plcContext.isHeartbeatActive ? 'text-pink-500 animate-pulse' : 'text-gray-400'}`} />
+                          <span className={`px-3 py-1 rounded-md flex items-center ${plcContext.isHeartbeatActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}`}>
+                            <div className={`w-3 h-3 mr-2 rounded-full ${plcContext.isHeartbeatActive ? 'bg-green-500 heartbeat-blink' : 'bg-gray-400'}`}></div>
                             {plcContext.isHeartbeatActive ? '活跃(M4005)' : '停止'}
                           </span>
                         </div>
@@ -2987,7 +3004,7 @@ export default function DevicesPage() {
                           type="text" 
                           value={plcConfig.host}
                           onChange={(e) => handleConfigChange('host', e.target.value)}
-                          placeholder="例如: 192.168.55.199"
+                          placeholder="例如: 192.168.6.6"
                         />
                       </div>
                       

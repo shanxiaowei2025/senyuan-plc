@@ -185,6 +185,57 @@ export const DatabaseRecordTable = memo(function DatabaseRecordTable({
                 />
               </div>
             </div>
+            
+            {/* 时间搜索区域 */}
+            <div className="mt-4">
+              <h5 className="text-sm font-medium text-gray-700 mb-3">时间范围搜索</h5>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-sm font-medium text-gray-700">创建时间开始</label>
+                    <Input
+                      type="date"
+                      value={advancedSearchFields.createdAtStart || ''}
+                      onChange={(e) => onAdvancedSearchFieldChange('createdAtStart', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-700">创建时间结束</label>
+                    <Input
+                      type="date"
+                      value={advancedSearchFields.createdAtEnd || ''}
+                      onChange={(e) => onAdvancedSearchFieldChange('createdAtEnd', e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-sm font-medium text-gray-700">更新时间开始</label>
+                    <Input
+                      type="date"
+                      value={advancedSearchFields.updatedAtStart || ''}
+                      onChange={(e) => onAdvancedSearchFieldChange('updatedAtStart', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-700">更新时间结束</label>
+                    <Input
+                      type="date"
+                      value={advancedSearchFields.updatedAtEnd || ''}
+                      onChange={(e) => onAdvancedSearchFieldChange('updatedAtEnd', e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="mt-4 text-sm text-gray-600 bg-blue-50 p-3 rounded-lg">
+              <div className="font-medium mb-1">搜索说明：</div>
+              <div>• 多个字段同时搜索使用 AND 逻辑</div>
+              <div>• 数值字段支持模糊匹配，大小写不敏感</div>
+              <div>• 时间搜索支持范围查询</div>
+              <div>• 留空的字段将被忽略</div>
+            </div>
           </div>
         )}
 

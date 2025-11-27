@@ -49,7 +49,8 @@ export const useFilteredSyPlcRecords = (
         const hasAdvancedSearch = Object.values(advancedSearchFields).some(value => value.trim() !== '');
         if (!hasAdvancedSearch) return true;
         
-        return (
+        // 数值字段模糊搜索
+        const numericFieldsMatch = (
           (!advancedSearchFields.modelD2040 || record.modelD2040.toString().toLowerCase().includes(advancedSearchFields.modelD2040.toLowerCase())) &&
           (!advancedSearchFields.cageNodesD2044 || record.cageNodesD2044.toString().toLowerCase().includes(advancedSearchFields.cageNodesD2044.toLowerCase())) &&
           (!advancedSearchFields.cageNumD2048 || record.cageNumD2048.toString().toLowerCase().includes(advancedSearchFields.cageNumD2048.toLowerCase())) &&
@@ -59,6 +60,17 @@ export const useFilteredSyPlcRecords = (
           (!advancedSearchFields.difference || (record.difference && record.difference.toString().toLowerCase().includes(advancedSearchFields.difference.toLowerCase()))) &&
           (!advancedSearchFields.totalNodesD2052 || (record.totalNodesD2052 && record.totalNodesD2052.toString().toLowerCase().includes(advancedSearchFields.totalNodesD2052.toLowerCase())))
         );
+
+        // 时间范围搜索
+        const recordCreatedAt = new Date(record.createdAt);
+        const recordUpdatedAt = new Date(record.updatedAt);
+        
+        const createdAtStartMatch = !advancedSearchFields.createdAtStart || recordCreatedAt >= new Date(advancedSearchFields.createdAtStart);
+        const createdAtEndMatch = !advancedSearchFields.createdAtEnd || recordCreatedAt <= new Date(advancedSearchFields.createdAtEnd + 'T23:59:59.999Z');
+        const updatedAtStartMatch = !advancedSearchFields.updatedAtStart || recordUpdatedAt >= new Date(advancedSearchFields.updatedAtStart);
+        const updatedAtEndMatch = !advancedSearchFields.updatedAtEnd || recordUpdatedAt <= new Date(advancedSearchFields.updatedAtEnd + 'T23:59:59.999Z');
+        
+        return numericFieldsMatch && createdAtStartMatch && createdAtEndMatch && updatedAtStartMatch && updatedAtEndMatch;
       }
       
       return true;

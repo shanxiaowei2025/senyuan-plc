@@ -59,7 +59,7 @@ import { plcClient, checkPLCConnection } from '../connect/route';
  *                       properties:
  *                         host:
  *                           type: string
- *                           example: "192.168.55.199"
+ *                           example: "192.168.6.6"
  *                         port:
  *                           type: integer
  *                           example: 502

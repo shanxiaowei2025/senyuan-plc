@@ -80,7 +80,7 @@ pnpm install
 ```env
 DATABASE_URL="file:./dev.db"
 # 可选PLC默认配置
-PLC_HOST="192.168.55.199"
+PLC_HOST="192.168.6.6"
 PLC_PORT="502"
 PLC_UNIT_ID="1"
 ```

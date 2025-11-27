@@ -100,7 +100,7 @@ export const getApiDocs = () => {
               config: {
                 type: 'object',
                 properties: {
-                  host: { type: 'string', example: '192.168.55.199' },
+                  host: { type: 'string', example: '192.168.6.6' },
                   port: { type: 'number', example: 502 },
                   unitId: { type: 'number', example: 1 },
                   timeout: { type: 'number', example: 5000 },
@@ -140,7 +140,7 @@ export const getApiDocs = () => {
               id: { type: 'string', example: 'device_123456' },
               name: { type: 'string', example: 'PLC设备1' },
               type: { type: 'string', example: 'Modbus TCP' },
-              address: { type: 'string', example: '192.168.55.199' },
+              address: { type: 'string', example: '192.168.6.6' },
               status: { type: 'string', enum: ['online', 'offline', 'error'], example: 'online' },
               lastSeen: { type: 'string', format: 'date-time' },
             },

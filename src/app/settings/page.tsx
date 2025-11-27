@@ -137,7 +137,7 @@ export default function SettingsPage() {
                     type="text"
                     value={config.host}
                     onChange={(e) => handleInputChange('host', e.target.value)}
-                    placeholder="192.168.55.199"
+                    placeholder="192.168.6.6"
                     className="w-full"
                   />
                   <p className="text-xs text-gray-500 mt-1">

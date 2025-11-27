@@ -1,6 +1,8 @@
 {
   "name": "manage",
   "version": "0.1.0",
+  "description": "森源管理系统 - 工业设备管理和数据监控平台",
+  "author": "森源科技",
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack -p 3001",
@@ -9,7 +11,37 @@
     "lint": "next lint",
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:seed": "tsx prisma/seed.ts",
+    "build:exe": "next build && pkg . --out-path dist",
+    "package:windows": "npm run build:exe",
+    "electron": "electron .",
+    "electron:dev": "NODE_ENV=development electron .",
+    "build:electron": "next build && electron-builder",
+    "dist:electron": "next build && cross-env ELECTRON_BUILDER_ALLOW_UNRESOLVED_DEPENDENCIES=true electron-builder --publish=never",
+    "dist:electron:npm": "npm run build && electron-builder --publish=never"
+  },
+  "main": "electron-main.js",
+  "bin": {
+    "manage": "./dist-server.js"
+  },
+  "pkg": {
+    "scripts": [
+      "dist-server.js",
+      ".next/standalone/**/*.js"
+    ],
+    "assets": [
+      ".next/static/**/*",
+      ".next/standalone/**/*",
+      "public/**/*",
+      "prisma/**/*",
+      "data/**/*",
+      "node_modules/@prisma/client/**/*",
+      "node_modules/prisma/**/*"
+    ],
+    "targets": [
+      "node18-win-x64"
+    ],
+    "outputPath": "dist"
   },
   "dependencies": {
     "@prisma/client": "^6.11.1",
@@ -23,6 +55,7 @@
     "next-swagger-doc": "^0.4.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "styled-jsx": "^5.1.1",
     "swagger-ui-react": "^5.27.0",
     "tailwind-merge": "^3.3.1",
     "xlsx": "^0.18.5"
@@ -33,8 +66,12 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "cross-env": "^7.0.3",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.6.4",
     "eslint": "^9",
     "eslint-config-next": "15.3.5",
+    "pkg": "^5.8.1",
     "prisma": "^6.11.1",
     "tailwindcss": "^4",
     "tsx": "^4.20.3",
@@ -42,5 +79,75 @@
   },
   "optionalDependencies": {
     "serialport": "^13.0.0"
+  },
+  "build": {
+    "appId": "com.senyuan.manage",
+    "productName": "森源管理系统",
+    "asar": false,
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "!**/.git",
+      "!**/.DS_Store",
+      "!**/node_modules/.cache",
+      {
+        "from": ".",
+        "to": ".",
+        "filter": [
+          "electron-main.js",
+          ".next/**/*",
+          "public/**/*",
+          "prisma/**/*",
+          "data/**/*",
+          "package.json"
+        ]
+      },
+      {
+        "from": "node_modules",
+        "to": "node_modules",
+        "filter": ["**/*"]
+      }
+    ],
+    "extraResources": [
+      {
+        "from": "prisma/",
+        "to": "prisma/",
+        "filter": ["**/*"]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "requestedExecutionLevel": "asInvoker",
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "森源管理系统",
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true,
+      "menuCategory": "工业管理"
+    },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.productivity"
+    },
+    "linux": {
+      "target": "AppImage",
+      "category": "Office"
+    }
   }
 }

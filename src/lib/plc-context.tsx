@@ -70,7 +70,7 @@ export function PLCProvider({ children }: { children: ReactNode }) {
     
     // 默认配置
     return {
-      host: '192.168.55.199',
+      host: '192.168.6.6',
       port: 502,
       unitId: 1,
       timeout: 15000,
@@ -256,7 +256,7 @@ export function PLCProvider({ children }: { children: ReactNode }) {
   // 监控服务状态
   const [isMonitoringState, setIsMonitoringState] = useState(false)
   
-  // 心跳状态
+  // M4005心跳状态（读取PLC实际状态）
   const [isHeartbeatActiveState, setIsHeartbeatActiveState] = useState(false)
   
   // 启动监控服务
@@ -279,12 +279,48 @@ export function PLCProvider({ children }: { children: ReactNode }) {
       // 连接成功后自动启动监控
       handlePLCConnection(true)
       setIsMonitoringState(true)
-      setIsHeartbeatActiveState(true)
     } else {
       // 断开连接时自动停止监控
       handlePLCConnection(false)
       setIsMonitoringState(false)
       setIsHeartbeatActiveState(false)
+    }
+  }, [isConnected])
+  
+  // 定期读取M4005状态
+  useEffect(() => {
+    let heartbeatInterval: NodeJS.Timeout | null = null
+    
+    const checkM4005Status = async () => {
+      if (!isConnected) {
+        setIsHeartbeatActiveState(false)
+        return
+      }
+      
+      try {
+        const response = await fetch('/api/plc/coils?address=4005&length=1&silent=true')
+        if (response.ok) {
+          const data = await response.json()
+          setIsHeartbeatActiveState(data.success && data.data?.[0] === true)
+        } else {
+          setIsHeartbeatActiveState(false)
+        }
+      } catch (error) {
+        setIsHeartbeatActiveState(false)
+      }
+    }
+    
+    if (isConnected) {
+      // 立即检查一次
+      checkM4005Status()
+      // 每100ms检查一次M4005状态
+      heartbeatInterval = setInterval(checkM4005Status, 100)
+    }
+    
+    return () => {
+      if (heartbeatInterval) {
+        clearInterval(heartbeatInterval)
+      }
     }
   }, [isConnected])
 
