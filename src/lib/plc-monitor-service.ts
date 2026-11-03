@@ -624,7 +624,7 @@ async function processM4004Logic(): Promise<void> {
 }
 
 /**
- * 复杂计算逻辑
+ * 累计补偿：源值减去同型号、同笼子编号、同角度的第1至N-1节差值之和
  * @param sourceValue 源值（D2020或D2024）
  * @param cageNodes 笼子节数D2044
  * @param logPrefix 日志前缀
@@ -657,62 +657,50 @@ async function processComplexCalculation(
   
   console.log(`📊 角度D4012: ${angle}, 型号D2040: ${model}, 笼子编号D2048: ${cageNum}`);
   
-  // 计算要查询的笼子节数（当前节数-1）
-  const queryNodes = cageNodes - 1;
-  console.log(`🔍 查询数据库中笼子节数为 ${queryNodes} 对应角度 ${angle} 的记录...`);
-  
-  // 在数据库中查找对应的差值字段
-  const syPlcResponse = await fetch(`/api/sy-plc?model=${model}&cageNodes=${queryNodes}&angle=${angle}&cageNum=${cageNum}`);
+  // 专用接口在服务器查询所有历史节，不受记录列表默认50条的分页限制。
+  const params = new URLSearchParams({
+    model: String(model),
+    cageNum: String(cageNum),
+    angle: String(angle),
+    currentNode: String(cageNodes)
+  });
+  console.log(`🔍 查询第1至${cageNodes - 1}节的累计差值 (型号:${model}, 笼子编号:${cageNum}, 角度:${angle})`);
+  const syPlcResponse = await fetch(`/api/sy-plc/compensation?${params}`, { cache: 'no-store' });
   
   if (!syPlcResponse.ok) {
-    throw new Error('查询SyPlc数据库失败');
+    throw new Error('查询SyPlc累计差值失败');
   }
   
   const syPlcData = await syPlcResponse.json();
   
-  if (!syPlcData.success || syPlcData.data.length === 0) {
-    console.warn(`⚠️ 未找到匹配的数据库记录 (型号:${model}, 笼子节数:${queryNodes}, 角度:${angle}, 笼子编号:${cageNum})`);
-    await addRuleExecutionLog(`${logPrefix}警告：未找到匹配的数据库记录`, 'WARN');
-    
-    // 如果没有找到匹配记录，直接使用源值
-    try {
-      await writeToD2004(sourceValue, `${logPrefix}：未找到数据库记录，直接使用源值`);
-    } catch (error) {
-      console.error(`${logPrefix}：写入D2004验证失败，终止执行:`, error);
-      await addRuleExecutionLog(`${logPrefix}终止：写入D2004验证失败 - ${error instanceof Error ? error.message : '未知错误'}`, 'ERROR');
-      throw error;
-    }
+  if (!syPlcData.success || !syPlcData.data) {
+    throw new Error(syPlcData.error || '查询SyPlc累计差值失败');
+  }
+
+  const { totalDifference, missingNodes } = syPlcData.data;
+  if (!Array.isArray(missingNodes) ||
+      (totalDifference !== null && !Number.isFinite(totalDifference))) {
+    throw new Error('累计差值响应无效');
+  }
+
+  if (totalDifference === null || missingNodes.length > 0) {
+    const reason = `第${missingNodes.join('、')}节记录缺失或差值为空`;
+    await addRuleExecutionLog(`${logPrefix}警告：${reason}，不使用部分累计值，直接使用源值`, 'WARN');
+    // 延续历史数据不可用时使用源值的处理，不进行不完整的累计补偿。
+    await writeToD2004(sourceValue, `${logPrefix}：历史差值不完整，直接使用源值`);
     return;
   }
-  
-  // 获取上一节对应角度的差值字段
-  const differenceValue = syPlcData.data[0].difference;
-  console.log(`📊 找到上一节笼子对应角度的差值: ${differenceValue}`);
-  
-  if (differenceValue === null || differenceValue === undefined) {
-    console.warn(`⚠️ 数据库记录中差值字段为空`);
-    await addRuleExecutionLog(`${logPrefix}警告：数据库记录中差值字段为空，直接使用源值`, 'WARN');
-    
-    // 如果差值字段为空，直接使用源值
-    try {
-      await writeToD2004(sourceValue, `${logPrefix}：差值字段为空，直接使用源值`);
-    } catch (error) {
-      console.error(`${logPrefix}：写入D2004验证失败，终止执行:`, error);
-      await addRuleExecutionLog(`${logPrefix}终止：写入D2004验证失败 - ${error instanceof Error ? error.message : '未知错误'}`, 'ERROR');
-      throw error;
-    }
-    return;
+
+  // 保留各节差值的正负号，累计完整历史后再计算定位输出。
+  const finalResult = sourceValue - totalDifference;
+  if (!Number.isFinite(finalResult)) {
+    throw new Error('累计补偿后的定位输出不是有效数值');
   }
-  
-  // 计算最终结果：源值 - 差值
-  const finalResult = sourceValue - differenceValue;
-  console.log(`📊 最终结果: ${sourceValue} - ${differenceValue} = ${finalResult}`);
-  
-  await addRuleExecutionLog(`${logPrefix}计算完成：${sourceValue} - ${differenceValue} = ${finalResult}`);
+  await addRuleExecutionLog(`${logPrefix}累计补偿完成：源值${sourceValue} - 第1至${cageNodes - 1}节累计差值${totalDifference} = ${finalResult}`);
   
   // 写入D2004
   try {
-    await writeToD2004(finalResult, `${logPrefix}：复杂计算结果`);
+    await writeToD2004(finalResult, `${logPrefix}：累计补偿结果`);
   } catch (error) {
     console.error(`${logPrefix}：写入D2004验证失败，终止执行:`, error);
     await addRuleExecutionLog(`${logPrefix}终止：写入D2004验证失败 - ${error instanceof Error ? error.message : '未知错误'}`, 'ERROR');
@@ -1246,4 +1234,4 @@ export function getHeartbeatStatus() {
     heartbeatInterval: HEARTBEAT_INTERVAL,
     lastHeartbeatTime: heartbeatTimer ? new Date().toISOString() : null
   };
-} 
+}

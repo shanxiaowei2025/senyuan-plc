@@ -67,3 +67,7 @@ server.js
 # data files (but keep directory)
 data/*
 !data/.gitkeep
+
+/docs/*
+
+/tests/*

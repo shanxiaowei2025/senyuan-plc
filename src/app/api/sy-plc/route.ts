@@ -442,7 +442,11 @@ export async function POST(request: NextRequest) {
     
     // 可选字段处理
     const rebarLength = actualRebarLength ? parseFloat(actualRebarLength) : null;
-    const diff = difference ? parseFloat(difference) : null;
+    const diff = difference === null || difference === undefined || difference === ''
+      ? null : parseFloat(difference);
+    if (diff !== null && !Number.isFinite(diff)) {
+      return NextResponse.json({ success: false, error: '差值必须是有效数值或空值' }, { status: 400 });
+    }
 
     // 查询是否存在重复记录（根据型号、笼子节数、笼子编号、主轴角度）
     const existingRecord = await prisma.syPlc.findFirst({
@@ -556,7 +560,11 @@ export async function PUT(request: NextRequest) {
       processedData.theoreticalLength = updateData.theoreticalLength ? parseFloat(updateData.theoreticalLength) : null;
     }
     if (updateData.difference !== undefined) {
-      processedData.difference = updateData.difference ? parseFloat(updateData.difference) : null;
+      processedData.difference = updateData.difference === null || updateData.difference === ''
+        ? null : parseFloat(updateData.difference);
+      if (processedData.difference !== null && !Number.isFinite(processedData.difference)) {
+        return NextResponse.json({ success: false, error: '差值必须是有效数值或空值' }, { status: 400 });
+      }
     }
     if (updateData.totalNodesD2052 !== undefined) {
       processedData.totalNodesD2052 = updateData.totalNodesD2052 ? parseFloat(updateData.totalNodesD2052) : null;
@@ -727,4 +735,4 @@ export async function DELETE(request: NextRequest) {
       timestamp: getUTC8TimeString()
     }, { status: 500 });
   }
-} 
+}
