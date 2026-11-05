@@ -1,5 +1,6 @@
 import { EventEmitter } from 'events'
 import { getUTC8Date } from '@/lib/utils'
+import { normalizePLCTimeout, PLC_TIMEOUT_MS } from './plc-settings'
 
 // 钢筋测量位置参数接口
 export interface MeasurePositions {
@@ -59,6 +60,7 @@ export class PLCService extends EventEmitter {
     // 确保maxReconnectAttempts为1，无论传入什么值
     this.config = {
       ...config,
+      timeout: normalizePLCTimeout(config.timeout),
       maxReconnectAttempts: 1
     }
   }
@@ -428,6 +430,7 @@ export class PLCService extends EventEmitter {
       this.config = {
         ...this.config,
         ...safeConfig,
+        timeout: normalizePLCTimeout(safeConfig.timeout ?? this.config.timeout),
         // 确保maxReconnectAttempts始终为1
         maxReconnectAttempts: 1
       }
@@ -438,6 +441,7 @@ export class PLCService extends EventEmitter {
       this.config = {
         ...this.config,
         ...newConfig,
+        timeout: normalizePLCTimeout(newConfig.timeout ?? this.config.timeout),
         // 确保maxReconnectAttempts始终为1
         maxReconnectAttempts: 1
       }
@@ -452,7 +456,7 @@ export const plcService = new PLCService({
         host: '192.168.6.6',
   port: 502,
   unitId: 1,
-  timeout: 5000,
+  timeout: PLC_TIMEOUT_MS,
   reconnectInterval: 3000,
   maxReconnectAttempts: 1, // 强制设为1
   measurePositions: {
@@ -474,6 +478,7 @@ export function savePLCConfig(config: PLCConfig): void {
   if (typeof window !== 'undefined') {
     localStorage.setItem('plcConfig', JSON.stringify({
       ...config,
+      timeout: normalizePLCTimeout(config.timeout),
       maxReconnectAttempts: 1 // 确保maxReconnectAttempts始终为1
     }))
   }
@@ -490,6 +495,7 @@ export function loadPLCConfig(): PLCConfig | null {
         const config = JSON.parse(savedConfig)
         return {
           ...config,
+          timeout: normalizePLCTimeout(config.timeout),
           maxReconnectAttempts: 1, // 确保maxReconnectAttempts始终为1
           measurePositions: config.measurePositions || {
             position1: 0, position2: 0, position3: 0, position4: 0,

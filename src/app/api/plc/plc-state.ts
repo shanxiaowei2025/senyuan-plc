@@ -1,5 +1,6 @@
 import { PLCConfig, PLCLog } from '@/lib/plc-service'
 import { getUTC8Date } from '@/lib/utils'
+import { normalizePLCTimeout } from '@/lib/plc-settings'
 
 // PLC连接状态
 export let isConnected = false
@@ -11,7 +12,7 @@ export let plcConfig: PLCConfig = {
   host: process.env.PLC_HOST || '192.168.6.6',
   port: parseInt(process.env.PLC_PORT || '502'),
   unitId: parseInt(process.env.PLC_UNIT_ID || '1'),
-  timeout: parseInt(process.env.PLC_TIMEOUT || '15000'), // 增加超时时间到15秒
+  timeout: normalizePLCTimeout(process.env.PLC_TIMEOUT),
   reconnectInterval: parseInt(process.env.PLC_RECONNECT_INTERVAL || '8000'), // 增加重连间隔到8秒
   maxReconnectAttempts: 1,
   measurePositions: {
@@ -85,6 +86,7 @@ export function updateConfig(newConfig: Partial<PLCConfig>): void {
   plcConfig = {
     ...plcConfig,
     ...newConfig,
+    timeout: normalizePLCTimeout(newConfig.timeout ?? plcConfig.timeout),
     // 确保maxReconnectAttempts始终为1
     maxReconnectAttempts: 1
   }

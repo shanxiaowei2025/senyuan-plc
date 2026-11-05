@@ -109,6 +109,7 @@ const MONITORING_INTERVAL = 1000; // 正常间隔1秒
 const DISCONNECTED_INTERVAL = 5000; // PLC未连接时间隔5秒
 // 监控定时器ID
 let monitorTimer: NodeJS.Timeout | null = null;
+let monitorGeneration = 0;
 // 静默模式 - 不记录常规检查日志
 let silentMode = true;
 // PLC连接状态
@@ -118,6 +119,7 @@ let connectionCheckCounter = 0;
 
 // 心跳功能相关变量
 let heartbeatActive = false;
+let heartbeatInFlight = false;
 let heartbeatTimer: NodeJS.Timeout | null = null;
 const HEARTBEAT_INTERVAL = 1000; // 心跳间隔1秒
 const HEARTBEAT_ADDRESS = 4005; // M4005地址
@@ -178,10 +180,11 @@ export function stopHeartbeat(): void {
  * 执行心跳 - 向M4005写入ON状态
  */
 async function executeHeartbeat(): Promise<void> {
-  if (!isPlcConnected) {
+  if (!isPlcConnected || heartbeatInFlight) {
     return;
   }
 
+  heartbeatInFlight = true;
   try {
     const response = await fetch('/api/plc/coils', {
       method: 'POST',
@@ -204,6 +207,8 @@ async function executeHeartbeat(): Promise<void> {
     // console.log(`✅ 心跳成功写入M${HEARTBEAT_ADDRESS}=ON`);
   } catch (error) {
     console.error('执行心跳时发生错误:', error);
+  } finally {
+    heartbeatInFlight = false;
   }
 }
 
@@ -227,11 +232,9 @@ export function startMonitoring(silent: boolean = true): boolean {
   ruleStates.rule2_lastExecutedBranch = '';
   ruleStates.rule3_M4002_lastState = false;
   
-  // 先检查一次PLC连接状态
-  checkPlcConnectionStatus();
-  
-  // 定时检查PLC状态
-  scheduleNextCheck();
+  // 初始检查结束后才安排下一轮，避免慢请求与定时器重叠。
+  const generation = ++monitorGeneration;
+  void checkPlcConnectionStatus(generation).then(() => scheduleNextCheck(generation));
   
   return true;
 }
@@ -239,7 +242,7 @@ export function startMonitoring(silent: boolean = true): boolean {
 /**
  * 检查PLC连接状态
  */
-async function checkPlcConnectionStatus(): Promise<boolean> {
+async function checkPlcConnectionStatus(generation: number): Promise<boolean> {
   try {
     // 每10次定时检查才查询一次PLC状态，避免过多请求
     if (connectionCheckCounter % 10 === 0 || !isPlcConnected) {
@@ -250,18 +253,17 @@ async function checkPlcConnectionStatus(): Promise<boolean> {
       
       if (response.ok) {
         const result = await response.json();
+        if (!monitoringActive || generation !== monitorGeneration) return false;
         const wasConnected = isPlcConnected;
         isPlcConnected = result.data && result.data.isConnected;
         
         // 如果连接状态发生变化，重新安排检查
         if (wasConnected !== isPlcConnected) {
           console.log(`PLC连接状态变化: ${isPlcConnected ? '已连接' : '未连接'}`);
-          if (monitorTimer) {
-            clearTimeout(monitorTimer);
-          }
-          scheduleNextCheck();
+          // 下一轮统一由监控循环安排，避免在状态变化时创建第二条循环。
         }
       } else {
+        if (!monitoringActive || generation !== monitorGeneration) return false;
         isPlcConnected = false;
       }
     }
@@ -270,7 +272,7 @@ async function checkPlcConnectionStatus(): Promise<boolean> {
     return isPlcConnected;
   } catch (error) {
     console.error('检查PLC连接状态失败:', error);
-    isPlcConnected = false;
+    if (generation === monitorGeneration) isPlcConnected = false;
     return false;
   }
 }
@@ -280,18 +282,23 @@ async function checkPlcConnectionStatus(): Promise<boolean> {
  * 当M4000为ON时，读取D2012(钢筋圈半径)和D2016(钢筋直径)，
  * 相加后找到最近的测量位置，写入D2000，然后复位M4000
  */
-async function executeRule1(): Promise<void> {
+type RuleCoils = readonly [boolean, boolean, boolean, boolean, boolean];
+
+async function readRuleCoils(): Promise<RuleCoils> {
+  const response = await fetch('/api/plc/coils?address=4000&length=5&silent=true');
+  if (!response.ok) throw new Error('读取M4000至M4004失败');
+  const result = await response.json();
+  if (!Array.isArray(result.data) || result.data.length < 5 ||
+      !result.data.slice(0, 5).every((value: unknown) => typeof value === 'boolean')) {
+    throw new Error('M4000至M4004返回数据无效');
+  }
+  return [result.data[0], result.data[1], result.data[2], result.data[3], result.data[4]];
+}
+
+async function executeRule1(coils: RuleCoils): Promise<void> {
   try {
-    // 1. 读取M4000状态（静默模式，不记录日志）
-    const m4000Response = await fetch('/api/plc/coils?address=4000&length=1&silent=true');
-    if (!m4000Response.ok) {
-      if (!silentMode) console.error('读取M4000失败:', await m4000Response.text());
-      return;
-    }
-    
-    const m4000Data = await m4000Response.json();
-    const currentM4000State = m4000Data.data[0]; // 当前M4000状态
-    
+    const currentM4000State = coils[0];
+
     // 检测M4000的上升沿（从OFF变为ON）
     const isM4000RisingEdge = !ruleStates.rule1_M4000_lastState && currentM4000State;
     ruleStates.rule1_M4000_lastState = currentM4000State;
@@ -419,28 +426,10 @@ async function executeRule1(): Promise<void> {
  * - 如果M4003为ON，则执行M4003分支逻辑
  * - 如果M4004为ON，则执行M4004分支逻辑
  */
-async function executeRule2(): Promise<void> {
+async function executeRule2(coils: RuleCoils): Promise<void> {
   try {
-    // 1. 读取所有相关线圈状态
-    const [m4001Response, m4003Response, m4004Response] = await Promise.all([
-      fetch('/api/plc/coils?address=4001&length=1&silent=true'),
-      fetch('/api/plc/coils?address=4003&length=1&silent=true'),
-      fetch('/api/plc/coils?address=4004&length=1&silent=true')
-    ]);
-    
-    if (!m4001Response.ok || !m4003Response.ok || !m4004Response.ok) {
-      if (!silentMode) console.error('读取M4001/M4003/M4004失败');
-      return;
-    }
-    
-    const m4001Data = await m4001Response.json();
-    const m4003Data = await m4003Response.json();
-    const m4004Data = await m4004Response.json();
-    
-    const currentM4001State = m4001Data.data[0];
-    const currentM4003State = m4003Data.data[0];
-    const currentM4004State = m4004Data.data[0];
-    
+    const [, currentM4001State, , currentM4003State, currentM4004State] = coils;
+
     // 检测M4001状态变化（用于日志记录）
     const m4001StateChanged = ruleStates.rule2_M4001_lastState !== currentM4001State;
     
@@ -720,35 +709,41 @@ async function writeToD2004(value: number, description: string): Promise<void> {
 /**
  * 安排下一次检查
  */
-function scheduleNextCheck(): void {
-  if (!monitoringActive) return;
+function scheduleNextCheck(generation: number): void {
+  if (!monitoringActive || generation !== monitorGeneration) return;
   
   // 根据PLC连接状态决定检查间隔
   const interval = isPlcConnected ? MONITORING_INTERVAL : DISCONNECTED_INTERVAL;
   
   monitorTimer = setTimeout(async () => {
-    if (!monitoringActive) return;
-    
+    if (!monitoringActive || generation !== monitorGeneration) return;
+    monitorTimer = null;
+
     try {
       // 先检查PLC是否连接
-      const connected = await checkPlcConnectionStatus();
+      const connected = await checkPlcConnectionStatus(generation);
       
       // 只有在PLC已连接的情况下才检查各个触发点状态
-      if (connected) {
+      if (connected && monitoringActive && generation === monitorGeneration) {
+        // 一次读取本轮触发位和分支位，三个规则共用同一快照。
+        const coils = await readRuleCoils();
+        if (!monitoringActive || generation !== monitorGeneration) return;
         // 执行规则1：M4000触发的钢筋测量位置计算
-        await executeRule1();
+        await executeRule1(coils);
         
+        if (!monitoringActive || generation !== monitorGeneration) return;
         // 执行规则2：M4001触发的钢筋长度计算和写入D2004
-        await executeRule2();
+        await executeRule2(coils);
         
+        if (!monitoringActive || generation !== monitorGeneration) return;
         // 执行规则3：M4002触发的数据采集和数据库写入
-        await executeRule3();
+        await executeRule3(coils);
       }
     } catch (error) {
       console.error('监控服务异常:', error);
     } finally {
       // 安排下一次检查，无论本次是否成功
-      scheduleNextCheck();
+      scheduleNextCheck(generation);
     }
   }, interval);
 }
@@ -764,7 +759,8 @@ export function stopMonitoring(): boolean {
   
   console.log('停止PLC监控服务');
   monitoringActive = false;
-  
+  monitorGeneration++;
+
   if (monitorTimer) {
     clearTimeout(monitorTimer);
     monitorTimer = null;
@@ -809,19 +805,10 @@ export function getRule2Status(): any {
  * 当M4002为ON时，读取M4003和M4004状态，根据状态选择不同的理论长度寄存器，
  * 读取多个寄存器值，计算钢筋实际长度和差值，然后写入数据库
  */
-async function executeRule3(): Promise<void> {
+async function executeRule3(coils: RuleCoils): Promise<void> {
   try {
-    // 1. 读取M4002状态
-    const m4002Response = await fetch('/api/plc/coils?address=4002&length=1&silent=true');
-    
-    if (!m4002Response.ok) {
-      if (!silentMode) console.error('读取M4002失败');
-      return;
-    }
-    
-    const m4002Data = await m4002Response.json();
-    const currentM4002State = m4002Data.data[0];
-    
+    const [, , currentM4002State, currentM4003State, currentM4004State] = coils;
+
     // 检测M4002的上升沿
     const isM4002RisingEdge = !ruleStates.rule3_M4002_lastState && currentM4002State;
     
@@ -836,24 +823,7 @@ async function executeRule3(): Promise<void> {
     console.log('🚀 规则3触发：M4002上升沿检测到');
     await addRuleExecutionLog('规则3触发：M4002上升沿检测到');
     
-    // 2. 读取M4003和M4004状态
-    console.log('🔍 读取M4003和M4004状态...');
-    await addRuleExecutionLog('开始读取M4003和M4004状态');
-    
-    const [m4003Response, m4004Response] = await Promise.all([
-      fetch('/api/plc/coils?address=4003&length=1&silent=true'),
-      fetch('/api/plc/coils?address=4004&length=1&silent=true')
-    ]);
-    
-    if (!m4003Response.ok || !m4004Response.ok) {
-      throw new Error('读取M4003或M4004失败');
-    }
-    
-    const m4003Data = await m4003Response.json();
-    const m4004Data = await m4004Response.json();
-    const currentM4003State = m4003Data.data[0];
-    const currentM4004State = m4004Data.data[0];
-    
+    // 分支状态来自本轮 M4000～M4004 的批量读取。
     console.log(`📊 M4003状态: ${currentM4003State ? 'ON' : 'OFF'}, M4004状态: ${currentM4004State ? 'ON' : 'OFF'}`);
     await addRuleExecutionLog(`M4003状态: ${currentM4003State ? 'ON' : 'OFF'}, M4004状态: ${currentM4004State ? 'ON' : 'OFF'}`);
     

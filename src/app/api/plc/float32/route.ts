@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import * as plcState from '../plc-state'
 import { plcClient, checkPLCConnection } from '../connect/route'
+import { runPLCOperation, plcErrorStatus, plcErrorMessage } from '@/lib/plc-queue'
 
 /**
  * @swagger
@@ -68,7 +69,7 @@ export async function GET(request: Request) {
     try {
       // 使用modbus-serial读取两个寄存器(32位浮点数)
       // 添加非空断言，因为已经通过checkPLCConnection()检查
-      const response = await plcClient!.readHoldingRegisters(address, 2)
+      const response = await runPLCOperation(plcClient!, client => client.readHoldingRegisters(address, 2), `holding:${address}:2`)
       
       // 从两个16位寄存器中提取浮点数
       const buffer = Buffer.alloc(4)
@@ -86,7 +87,7 @@ export async function GET(request: Request) {
       })
     } catch (error) {
       // 读取失败
-      const errorMessage = error instanceof Error ? error.message : '读取失败'
+      const errorMessage = plcErrorMessage(error, '读取失败')
       
       // 添加错误日志
       const errorLog = plcState.addLog('ERROR', `读取32位浮点数失败 (地址: ${address}): ${errorMessage}`, 'Read')
@@ -95,17 +96,17 @@ export async function GET(request: Request) {
       return NextResponse.json({
         success: false,
         error: errorMessage
-      }, { status: 500 })
+      }, { status: plcErrorStatus(error) })
     }
   } catch (error) {
     console.error('读取32位浮点数错误:', error)
     
-    const errorMessage = error instanceof Error ? error.message : '读取32位浮点数失败'
+    const errorMessage = plcErrorMessage(error, '读取32位浮点数失败')
     
     return NextResponse.json({
       success: false,
       error: errorMessage
-    }, { status: 500 })
+    }, { status: plcErrorStatus(error) })
   }
 }
 
@@ -207,7 +208,7 @@ export async function POST(request: Request) {
       
       // 使用modbus-serial写入两个寄存器
       // 添加非空断言，因为已经通过checkPLCConnection()检查
-      await plcClient!.writeRegisters(address, [lowRegister, highRegister])  // 注意顺序：先低位，后高位
+      await runPLCOperation(plcClient!, client => client.writeRegisters(address, [lowRegister, highRegister]))  // 注意顺序：先低位，后高位
       
       // 添加成功日志
       const successLog = plcState.addLog('INFO', `写入32位浮点数成功 (地址: ${address}, 值: ${value})`, 'Write')
@@ -219,7 +220,7 @@ export async function POST(request: Request) {
       })
     } catch (error) {
       // 写入失败
-      const errorMessage = error instanceof Error ? error.message : '写入失败'
+      const errorMessage = plcErrorMessage(error, '写入失败')
       
       // 添加错误日志
       const errorLog = plcState.addLog('ERROR', `写入32位浮点数失败 (地址: ${address}, 值: ${value}): ${errorMessage}`, 'Write')
@@ -228,16 +229,16 @@ export async function POST(request: Request) {
       return NextResponse.json({
         success: false,
         error: errorMessage
-      }, { status: 500 })
+      }, { status: plcErrorStatus(error) })
     }
   } catch (error) {
     console.error('写入32位浮点数错误:', error)
     
-    const errorMessage = error instanceof Error ? error.message : '写入32位浮点数失败'
+    const errorMessage = plcErrorMessage(error, '写入32位浮点数失败')
     
     return NextResponse.json({
       success: false,
       error: errorMessage
-    }, { status: 500 })
+    }, { status: plcErrorStatus(error) })
   }
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { plcClient, checkPLCConnection } from '../connect/route'
+import { runPLCOperation, plcErrorStatus, plcErrorMessage } from '@/lib/plc-queue'
 import * as plcState from '../plc-state'
 
 /**
@@ -109,15 +110,15 @@ export async function GET(request: Request) {
     switch (type) {
       case 'holding':
           // 使用plcClient而不是plcService
-          const response = await plcClient!.readHoldingRegisters(addr, len)
+          const response = await runPLCOperation(plcClient!, client => client.readHoldingRegisters(addr, len), `holding:${addr}:${len}`)
           result = response.data
         break
       case 'input':
-          const inputResponse = await plcClient!.readInputRegisters(addr, len)
+          const inputResponse = await runPLCOperation(plcClient!, client => client.readInputRegisters(addr, len), `input:${addr}:${len}`)
           result = inputResponse.data
         break
       case 'coils':
-          const coilResponse = await plcClient!.readCoils(addr, len)
+          const coilResponse = await runPLCOperation(plcClient!, client => client.readCoils(addr, len), `coils:${addr}:${len}`)
           result = coilResponse.data
         break
       default:
@@ -142,7 +143,7 @@ export async function GET(request: Request) {
     })
   } catch (error) {
       // 读取失败
-      const errorMessage = error instanceof Error ? error.message : '读取失败'
+      const errorMessage = plcErrorMessage(error, '读取失败')
       
       // 添加错误日志
       const errorLog = plcState.addLog('ERROR', `读取${type}寄存器失败 (地址: ${addr}): ${errorMessage}`, 'Read')
@@ -151,17 +152,17 @@ export async function GET(request: Request) {
       return NextResponse.json({
         success: false,
         error: errorMessage
-      }, { status: 500 })
+      }, { status: plcErrorStatus(error) })
     }
   } catch (error) {
     console.error('读取寄存器错误:', error)
     
-    const errorMessage = error instanceof Error ? error.message : '读取寄存器失败'
+    const errorMessage = plcErrorMessage(error, '读取寄存器失败')
     
     return NextResponse.json({
       success: false,
       error: errorMessage
-    }, { status: 500 })
+    }, { status: plcErrorStatus(error) })
   }
 }
 
@@ -270,10 +271,10 @@ export async function POST(request: Request) {
     switch (type) {
       case 'holding':
           // 使用plcClient而不是plcService
-          await plcClient!.writeRegisters(addr, [parseInt(value)])
+          await runPLCOperation(plcClient!, client => client.writeRegisters(addr, [parseInt(value)]))
         break
       case 'coil':
-          await plcClient!.writeCoil(addr, Boolean(value))
+          await runPLCOperation(plcClient!, client => client.writeCoil(addr, Boolean(value)))
         break
       default:
         return NextResponse.json({
@@ -297,7 +298,7 @@ export async function POST(request: Request) {
     })
   } catch (error) {
       // 写入失败
-      const errorMessage = error instanceof Error ? error.message : '写入失败'
+      const errorMessage = plcErrorMessage(error, '写入失败')
       
       // 添加错误日志
       const errorLog = plcState.addLog('ERROR', `写入${type}寄存器失败 (地址: ${addr}, 值: ${value}): ${errorMessage}`, 'Write')
@@ -306,16 +307,16 @@ export async function POST(request: Request) {
       return NextResponse.json({
         success: false,
         error: errorMessage
-      }, { status: 500 })
+      }, { status: plcErrorStatus(error) })
     }
   } catch (error) {
     console.error('写入寄存器错误:', error)
     
-    const errorMessage = error instanceof Error ? error.message : '写入寄存器失败'
+    const errorMessage = plcErrorMessage(error, '写入寄存器失败')
     
     return NextResponse.json({
       success: false,
       error: errorMessage
-    }, { status: 500 })
+    }, { status: plcErrorStatus(error) })
   }
 } 

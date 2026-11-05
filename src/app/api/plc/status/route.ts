@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import * as plcState from '../plc-state'
 import { plcClient, checkPLCConnection } from '../connect/route'
+import { runPLCOperation, plcErrorStatus, plcErrorMessage } from '@/lib/plc-queue'
 
 /**
  * @swagger
@@ -37,10 +38,10 @@ export async function GET() {
     const status = plcState.getConnectionStatus()
     
     // 如果有客户端连接，但状态显示未连接，尝试验证连接
-    if (plcClient && plcClient.isOpen && !status.isConnected) {
+    if (plcClient && plcClient.isOpen && !status.isConnected && !status.isConnecting) {
       try {
         // 尝试读取一个寄存器来验证连接是否有效
-        await plcClient.readHoldingRegisters(0, 1)
+        await runPLCOperation(plcClient, client => client.readHoldingRegisters(0, 1), 'holding:0:1')
         
         // 如果成功，更新连接状态
         plcState.updateConnectionStatus({
@@ -55,11 +56,11 @@ export async function GET() {
         // 连接无效，更新状态
         plcState.updateConnectionStatus({
           isConnected: false,
-          connectionError: error instanceof Error ? error.message : '连接无效'
+          connectionError: plcErrorMessage(error, '连接无效')
         })
         
         // 添加日志
-        const log = plcState.addLog('ERROR', `PLC连接无效: ${error instanceof Error ? error.message : '未知错误'}`, 'Status')
+        const log = plcState.addLog('ERROR', `PLC连接无效: ${plcErrorMessage(error, '未知错误')}`, 'Status')
         plcState.broadcastLog(log)
       }
     } else if ((!plcClient || !plcClient.isOpen) && status.isConnected) {
@@ -84,12 +85,12 @@ export async function GET() {
   } catch (error) {
     console.error('获取PLC状态错误:', error)
     
-    const errorMessage = error instanceof Error ? error.message : '获取PLC状态失败'
+    const errorMessage = plcErrorMessage(error, '获取PLC状态失败')
     
     return NextResponse.json({
       success: false,
       error: errorMessage,
       data: plcState.getConnectionStatus()
-    }, { status: 500 })
+    }, { status: plcErrorStatus(error) })
   }
 } 

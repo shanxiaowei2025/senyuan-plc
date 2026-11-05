@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { usePLC } from "@/lib/plc-context"
+import { normalizePLCTimeout, PLC_TIMEOUT_MS } from "@/lib/plc-settings"
 import { PLCStatusCard } from "@/components/devices/plc-status-card"
 import { DeviceLogTab } from "@/components/devices/device-log-tab"
 import { useSyPlcRecords } from "@/hooks/use-sy-plc-records"
@@ -320,7 +321,7 @@ export default function DevicesPage() {
             host: '192.168.6.6',
     port: 502,
     unitId: 1,
-    timeout: 5000,
+    timeout: PLC_TIMEOUT_MS,
     reconnectInterval: 3000,
     maxReconnectAttempts: 3,
     // 钢筋测量位置参数
@@ -1073,7 +1074,7 @@ export default function DevicesPage() {
                   host: plcStatus.config.host || '192.168.6.6',
         port: plcStatus.config.port || 502,
         unitId: plcStatus.config.unitId || 1,
-        timeout: plcStatus.config.timeout || 5000,
+        timeout: normalizePLCTimeout(plcStatus.config.timeout),
         reconnectInterval: plcStatus.config.reconnectInterval || 3000,
         maxReconnectAttempts: plcStatus.config.maxReconnectAttempts || 3,
         measurePositions: savedPositions
@@ -1084,7 +1085,7 @@ export default function DevicesPage() {
         host: '192.168.6.6',
         port: 502,
         unitId: 1,
-        timeout: 5000,
+        timeout: PLC_TIMEOUT_MS,
         reconnectInterval: 3000,
         maxReconnectAttempts: 3,
         measurePositions: savedPositions
@@ -2898,10 +2899,13 @@ export default function DevicesPage() {
                         <Input 
                           type="number" 
                           value={plcConfig.timeout}
-                          onChange={(e) => handleConfigChange('timeout', parseInt(e.target.value) || 5000)}
+                          onChange={(e) => handleConfigChange('timeout', normalizePLCTimeout(e.target.value))}
                           onWheel={handleWheel}
-                          placeholder="默认: 5000"
+                          min={1}
+                          max={PLC_TIMEOUT_MS}
+                          placeholder="默认: 2000"
                         />
+                        <p className="mt-1 text-xs text-gray-500">单次通信超时最多 2000 毫秒</p>
                       </div>
                       
                       <div className="mb-4">

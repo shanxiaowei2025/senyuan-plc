@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import * as plcState from '../plc-state'
 import { plcClient, checkPLCConnection } from '../connect/route'
+import { runPLCOperation, plcErrorStatus, plcErrorMessage } from '@/lib/plc-queue'
 
 /**
  * @swagger
@@ -88,7 +89,7 @@ export async function GET(request: Request) {
     try {
       // 使用ModbusRTU读取线圈
       // 添加非空断言，因为已经通过checkPLCConnection()检查
-      const response = await plcClient!.readCoils(address, length)
+      const response = await runPLCOperation(plcClient!, client => client.readCoils(address, length), `coils:${address}:${length}`)
       
       // 只在非静默模式下添加成功日志
       if (!silent) {
@@ -102,7 +103,7 @@ export async function GET(request: Request) {
       })
     } catch (error) {
       // 读取失败，总是记录错误日志
-      const errorMessage = error instanceof Error ? error.message : '读取失败'
+      const errorMessage = plcErrorMessage(error, '读取失败')
       
       // 添加错误日志
       const errorLog = plcState.addLog('ERROR', `读取线圈失败 (地址: ${address}): ${errorMessage}`, 'Read')
@@ -111,17 +112,17 @@ export async function GET(request: Request) {
       return NextResponse.json({
         success: false,
         error: errorMessage
-      }, { status: 500 })
+      }, { status: plcErrorStatus(error) })
     }
   } catch (error) {
     console.error('读取线圈错误:', error)
     
-    const errorMessage = error instanceof Error ? error.message : '读取线圈失败'
+    const errorMessage = plcErrorMessage(error, '读取线圈失败')
     
     return NextResponse.json({
       success: false,
       error: errorMessage
-    }, { status: 500 })
+    }, { status: plcErrorStatus(error) })
   }
 }
 
@@ -225,7 +226,7 @@ export async function POST(request: Request) {
     try {
       // 使用ModbusRTU写入线圈
       // 添加非空断言，因为已经通过checkPLCConnection()检查
-      await plcClient!.writeCoil(addr, boolValue)
+      await runPLCOperation(plcClient!, client => client.writeCoil(addr, boolValue))
       
       // 只在非静默模式下添加成功日志
       if (!silent) {
@@ -239,7 +240,7 @@ export async function POST(request: Request) {
       })
     } catch (error) {
       // 写入失败
-      const errorMessage = error instanceof Error ? error.message : '写入失败'
+      const errorMessage = plcErrorMessage(error, '写入失败')
       
       // 添加错误日志
       const errorLog = plcState.addLog('ERROR', `写入线圈失败 (地址: ${addr}, 值: ${boolValue}): ${errorMessage}`, 'Write')
@@ -248,16 +249,16 @@ export async function POST(request: Request) {
       return NextResponse.json({
         success: false,
         error: errorMessage
-      }, { status: 500 })
+      }, { status: plcErrorStatus(error) })
     }
   } catch (error) {
     console.error('写入线圈错误:', error)
     
-    const errorMessage = error instanceof Error ? error.message : '写入线圈失败'
+    const errorMessage = plcErrorMessage(error, '写入线圈失败')
     
     return NextResponse.json({
       success: false,
       error: errorMessage
-    }, { status: 500 })
+    }, { status: plcErrorStatus(error) })
   }
 } 

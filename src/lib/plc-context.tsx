@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
 import { plcService, PLCConfig, PLCLog } from './plc-service'
+import { normalizePLCTimeout, PLC_TIMEOUT_MS } from './plc-settings'
 // 确保事件监听器初始化
 import '@/lib/plc-initializer'
 // 导入PLC监控服务
@@ -61,7 +62,8 @@ export function PLCProvider({ children }: { children: ReactNode }) {
       const savedConfig = localStorage.getItem('plcConfig')
       if (savedConfig) {
         try {
-          return JSON.parse(savedConfig)
+          const saved = JSON.parse(savedConfig)
+          return { ...saved, timeout: normalizePLCTimeout(saved.timeout) }
         } catch (e) {
           console.error('解析保存的PLC配置失败', e)
         }
@@ -73,7 +75,7 @@ export function PLCProvider({ children }: { children: ReactNode }) {
       host: '192.168.6.6',
       port: 502,
       unitId: 1,
-      timeout: 15000,
+      timeout: PLC_TIMEOUT_MS,
       reconnectInterval: 8000,
       maxReconnectAttempts: 1 // 强制设为1
     }
@@ -166,6 +168,7 @@ export function PLCProvider({ children }: { children: ReactNode }) {
       const updated = { 
         ...prev, 
         ...newConfig,
+        timeout: normalizePLCTimeout(newConfig.timeout ?? prev.timeout),
         // 确保maxReconnectAttempts始终为1
         maxReconnectAttempts: 1
       }
@@ -283,42 +286,38 @@ export function PLCProvider({ children }: { children: ReactNode }) {
       setIsMonitoringState(false)
       setIsHeartbeatActiveState(false)
     }
+    return () => handlePLCConnection(false)
   }, [isConnected])
   
-  // 定期读取M4005状态
+  // 每秒读取一次；上一请求未结束时跳过，断开或卸载时取消请求。
   useEffect(() => {
-    let heartbeatInterval: NodeJS.Timeout | null = null
-    
+    if (!isConnected) return
+    const controller = new AbortController()
+    let inFlight = false
+
     const checkM4005Status = async () => {
-      if (!isConnected) {
-        setIsHeartbeatActiveState(false)
-        return
-      }
-      
+      if (inFlight || controller.signal.aborted) return
+      inFlight = true
       try {
-        const response = await fetch('/api/plc/coils?address=4005&length=1&silent=true')
-        if (response.ok) {
-          const data = await response.json()
-          setIsHeartbeatActiveState(data.success && data.data?.[0] === true)
-        } else {
-          setIsHeartbeatActiveState(false)
+        const response = await fetch('/api/plc/coils?address=4005&length=1&silent=true', {
+          signal: AbortSignal.any([controller.signal, AbortSignal.timeout(5000)])
+        })
+        const data = response.ok ? await response.json() : null
+        if (!controller.signal.aborted) {
+          setIsHeartbeatActiveState(data?.success === true && data.data?.[0] === true)
         }
-      } catch (error) {
-        setIsHeartbeatActiveState(false)
+      } catch {
+        if (!controller.signal.aborted) setIsHeartbeatActiveState(false)
+      } finally {
+        inFlight = false
       }
     }
-    
-    if (isConnected) {
-      // 立即检查一次
-      checkM4005Status()
-      // 每100ms检查一次M4005状态
-      heartbeatInterval = setInterval(checkM4005Status, 100)
-    }
-    
+
+    void checkM4005Status()
+    const heartbeatInterval = setInterval(checkM4005Status, 1000)
     return () => {
-      if (heartbeatInterval) {
-        clearInterval(heartbeatInterval)
-      }
+      clearInterval(heartbeatInterval)
+      controller.abort()
     }
   }, [isConnected])
 

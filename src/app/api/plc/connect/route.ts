@@ -1,90 +1,50 @@
 import { NextResponse } from 'next/server'
 import * as plcState from '../plc-state'
 import ModbusRTU from 'modbus-serial'
+import { runPLCOperation, closePLCQueue, plcErrorStatus, plcErrorMessage } from '@/lib/plc-queue'
+import { normalizePLCTimeout } from '@/lib/plc-settings'
 
 // 存储PLC连接（导出以便其他API路由可以访问）
 export let plcClient: ModbusRTU | null = null;
+let connectionRequestVersion = 0;
 
 // 处理PLC连接
 async function connectToPLC(config: typeof plcState.plcConfig): Promise<void> {
-  return new Promise((resolve, reject) => {
+  disconnectFromPLC();
+  const client = new ModbusRTU();
+  plcClient = client;
+  client.setTimeout(normalizePLCTimeout(config.timeout));
+
+  try {
+    await client.connectTCP(config.host, { port: config.port });
+    if (plcClient !== client) throw new Error('PLC连接已取消');
+    client.setID(config.unitId);
+    await validateConnection(client);
+    if (plcClient !== client) throw new Error('PLC连接已取消');
+  } catch (error) {
+    closePLCQueue(client);
     try {
-      // 如果已有连接，先关闭
-      if (plcClient) {
-        try {
-          plcClient.close();
-          console.log('已关闭旧PLC连接');
-        } catch (e) {
-          console.error('关闭旧连接失败:', e);
-        }
-        plcClient = null;
-      }
-      
-      // 创建新的ModbusRTU客户端
-      plcClient = new ModbusRTU();
-      
-      // 设置超时时间
-      plcClient.setTimeout(config.timeout);
-      
-      // 设置错误处理和关闭监听
-      const errorHandler = (error: Error) => {
-        console.error('Modbus错误:', error.message);
-        reject(new Error(`连接错误: ${error.message}`));
-      };
-      
-      // 连接到PLC
-      console.log('开始连接PLC:', config.host, config.port, '单元ID:', config.unitId);
-      
-      plcClient.connectTCP(config.host, { port: config.port })
-        .then(() => {
-          console.log('TCP连接建立成功');
-          
-          // 设置从站ID
-          plcClient!.setID(config.unitId);
-          console.log('从站ID已设置为:', config.unitId);
-          
-          console.log('开始验证Modbus通信');
-          
-          // 尝试读取不同寄存器来验证连接
-          return validateConnection(plcClient!);
-        })
-        .then(() => {
-          console.log('ModbusRTU连接验证成功');
-          resolve();
-        })
-        .catch((error) => {
-          console.error('ModbusRTU连接或验证失败:', error);
-          
-          // 关闭连接
-          if (plcClient) {
-            try {
-              plcClient.close();
-              console.log('关闭失败的ModbusRTU连接');
-            } catch (e) {
-              console.error('关闭连接失败:', e);
-            }
-            plcClient = null;
-          }
-          
-          reject(error);
-        });
-    } catch (error) {
-      console.error('创建ModbusRTU连接时出错:', error);
-      reject(error);
+      client.close();
+    } catch (closeError) {
+      console.error('关闭失败的PLC连接:', closeError);
     }
-  });
+    if (plcClient === client) plcClient = null;
+    throw error;
+  }
 }
 
 // 验证连接函数
 async function validateConnection(client: ModbusRTU): Promise<void> {
   // 依次尝试不同类型的寄存器，从地址0开始
-          try {
+  try {
     console.log('尝试验证连接: 读取保持寄存器(地址0)')
     // 尝试读取保持寄存器 (从地址0开始，读取1个寄存器)
-    await client.readHoldingRegisters(0, 1)
+    await runPLCOperation(client, connectedClient => connectedClient.readHoldingRegisters(0, 1), 'holding:0:1')
     console.log('Modbus连接验证成功（通过保持寄存器0）')
     return;
   } catch (error) {
+    // 通信已超时或连接已关闭时不再遍历地址，避免一次连接累积几十秒超时。
+    if (plcErrorStatus(error) !== 500 || !client.isOpen) throw error;
     // 获取更详细的错误信息
     console.error('保持寄存器0验证失败:', error)
     console.error('错误详情:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
@@ -94,12 +54,14 @@ async function validateConnection(client: ModbusRTU): Promise<void> {
   
   // 输入寄存器
   for (const address of [0, 1, 2, 3, 4, 5, 10, 100]) {
-            try {
+    try {
       console.log(`尝试验证连接: 读取输入寄存器(地址${address})`);
-      await client.readInputRegisters(address, 1);
+      await runPLCOperation(client, connectedClient => connectedClient.readInputRegisters(address, 1), `input:${address}:1`);
       console.log(`Modbus连接验证成功（通过输入寄存器${address}）`);
       return;
     } catch (error) {
+      // 通信已超时或连接已关闭时不再遍历地址，避免一次连接累积几十秒超时。
+      if (plcErrorStatus(error) !== 500 || !client.isOpen) throw error;
       console.error(`输入寄存器${address}验证失败:`, error);
       // 继续尝试下一个地址或方法
     }
@@ -107,12 +69,14 @@ async function validateConnection(client: ModbusRTU): Promise<void> {
   
   // 线圈
   for (const address of [0, 1, 2, 3, 4, 5, 10, 100]) {
-              try {
+    try {
       console.log(`尝试验证连接: 读取线圈(地址${address})`);
-      await client.readCoils(address, 1);
+      await runPLCOperation(client, connectedClient => connectedClient.readCoils(address, 1), `coils:${address}:1`);
       console.log(`Modbus连接验证成功（通过线圈${address}）`);
       return;
     } catch (error) {
+      // 通信已超时或连接已关闭时不再遍历地址，避免一次连接累积几十秒超时。
+      if (plcErrorStatus(error) !== 500 || !client.isOpen) throw error;
       console.error(`线圈${address}验证失败:`, error);
       // 继续尝试下一个地址或方法
     }
@@ -120,12 +84,14 @@ async function validateConnection(client: ModbusRTU): Promise<void> {
   
   // 离散输入
   for (const address of [0, 1, 2, 3, 4, 5, 10, 100]) {
-                try {
+      try {
       console.log(`尝试验证连接: 读取离散输入(地址${address})`);
-      await client.readDiscreteInputs(address, 1);
+      await runPLCOperation(client, connectedClient => connectedClient.readDiscreteInputs(address, 1), `discrete:${address}:1`);
       console.log(`Modbus连接验证成功（通过离散输入${address}）`);
       return;
     } catch (error) {
+      // 通信已超时或连接已关闭时不再遍历地址，避免一次连接累积几十秒超时。
+      if (plcErrorStatus(error) !== 500 || !client.isOpen) throw error;
       console.error(`离散输入${address}验证失败:`, error);
       // 继续尝试下一个地址或方法
     }
@@ -139,6 +105,7 @@ async function validateConnection(client: ModbusRTU): Promise<void> {
 function disconnectFromPLC(): void {
   if (plcClient) {
     try {
+      closePLCQueue(plcClient);
       plcClient.close();
       console.log('PLC连接已关闭');
     } catch (e) {
@@ -151,6 +118,8 @@ function disconnectFromPLC(): void {
 // 检查PLC连接状态
 export function checkPLCConnection(): boolean {
   try {
+    if (plcState.isConnecting) return false;
+
     // 首先检查基本条件
     if (!plcClient || !plcClient.isOpen) {
       // 如果plcClient不存在或未打开，确保状态一致
@@ -181,7 +150,7 @@ export function checkPLCConnection(): boolean {
     // 发生错误时，确保连接状态为断开
     plcState.updateConnectionStatus({
       isConnected: false,
-      connectionError: error instanceof Error ? error.message : '连接检查失败'
+      connectionError: plcErrorMessage(error, '连接检查失败')
     });
     // 广播状态更新
     plcState.broadcastStatus();
@@ -223,8 +192,8 @@ export function checkPLCConnection(): boolean {
  *               timeout:
  *                 type: number
  *                 description: 通信超时时间(毫秒)
- *                 default: 5000
- *                 example: 5000
+ *                 default: 2000
+ *                 example: 2000
  *               reconnectInterval:
  *                 type: number
  *                 description: 重连间隔(毫秒)
@@ -286,6 +255,12 @@ export async function POST(request: Request) {
       }, { status: 400 })
     }
     
+    if (plcState.isConnecting) {
+      return NextResponse.json({ success: false, error: 'PLC正在连接，请稍后重试' }, { status: 409 })
+    }
+
+    const requestVersion = ++connectionRequestVersion;
+
     // 更新PLC配置
     plcState.updateConfig(body)
     
@@ -328,8 +303,11 @@ export async function POST(request: Request) {
         data: plcState.getConnectionStatus()
       })
     } catch (error) {
+      if (requestVersion !== connectionRequestVersion) {
+        return NextResponse.json({ success: false, error: 'PLC连接已取消' }, { status: 409 })
+      }
       // 连接失败
-      const errorMessage = error instanceof Error ? error.message : '连接失败'
+      const errorMessage = plcErrorMessage(error, '连接失败')
       
       plcState.updateConnectionStatus({
         isConnected: false,
@@ -361,6 +339,9 @@ export async function POST(request: Request) {
         
         // 等待重连间隔
         await new Promise(resolve => setTimeout(resolve, plcState.plcConfig.reconnectInterval))
+        if (requestVersion !== connectionRequestVersion) {
+          return NextResponse.json({ success: false, error: 'PLC连接已取消' }, { status: 409 })
+        }
         
         try {
           // 再次尝试连接
@@ -386,8 +367,11 @@ export async function POST(request: Request) {
             data: plcState.getConnectionStatus()
           })
         } catch (retryError) {
+          if (requestVersion !== connectionRequestVersion) {
+            return NextResponse.json({ success: false, error: 'PLC连接已取消' }, { status: 409 })
+          }
           // 重连失败
-          const retryErrorMessage = retryError instanceof Error ? retryError.message : '重新连接失败'
+          const retryErrorMessage = plcErrorMessage(retryError, '重新连接失败')
           
           plcState.updateConnectionStatus({
             isConnected: false,
@@ -492,6 +476,7 @@ export async function POST(request: Request) {
  *                   $ref: '#/components/schemas/PLCStatus'
  */
 export async function DELETE() {
+  connectionRequestVersion++;
   try {
     // 断开PLC连接
     disconnectFromPLC()
@@ -518,7 +503,7 @@ export async function DELETE() {
   } catch (error) {
     console.error('断开PLC连接错误:', error)
     
-    const errorMessage = error instanceof Error ? error.message : '断开连接失败'
+    const errorMessage = plcErrorMessage(error, '断开连接失败')
     
     return NextResponse.json({
       success: false,

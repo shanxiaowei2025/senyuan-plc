@@ -1,3 +1,4 @@
+import { normalizePLCTimeout } from '@/lib/plc-settings'
 import { NextResponse } from 'next/server';
 import ModbusRTU from 'modbus-serial';
 
@@ -148,7 +149,7 @@ export async function POST(request: Request) {
     const host = body.host || '192.168.6.6';
     const port = parseInt(body.port || '502');
     const unitId = parseInt(body.unitId || '1');
-    const timeout = parseInt(body.timeout || '10000');
+    const timeout = normalizePLCTimeout(body.timeout);
     
     // 记录步骤1
     results.push({

@@ -1,3 +1,4 @@
+import { normalizePLCTimeout } from '@/lib/plc-settings'
 import { NextRequest, NextResponse } from 'next/server'
 import { plcService, savePLCConfig } from '@/lib/plc-service'
 
@@ -42,7 +43,7 @@ import { plcService, savePLCConfig } from '@/lib/plc-service'
  *                     reconnectInterval:
  *                       type: integer
  *                       description: 重连间隔(毫秒)
- *                       example: 5000
+ *                       example: 2000
  *                     maxReconnectAttempts:
  *                       type: integer
  *                       description: 最大重连次数
@@ -118,7 +119,7 @@ import { plcService, savePLCConfig } from '@/lib/plc-service'
  *                 type: integer
  *                 description: 重连间隔(毫秒)
  *                 minimum: 1000
- *                 example: 5000
+ *                 example: 2000
  *               maxReconnectAttempts:
  *                 type: integer
  *                 description: 最大重连次数
@@ -239,7 +240,7 @@ export async function POST(request: NextRequest) {
       host,
       port: parseInt(port.toString(), 10),
       unitId: unitId ? parseInt(unitId.toString(), 10) : 1,
-      timeout: timeout ? parseInt(timeout.toString(), 10) : 5000,
+      timeout: normalizePLCTimeout(timeout),
       reconnectInterval: reconnectInterval ? parseInt(reconnectInterval.toString(), 10) : 3000,
       maxReconnectAttempts: maxReconnectAttempts ? parseInt(maxReconnectAttempts.toString(), 10) : 3,
       measurePositions: measurePositions || defaultMeasurePositions
