@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { Prisma, type SyPlc } from '@prisma/client';
+import { applySyPlcCursor, buildSyPlcWhere, parseSyPlcPagination, SyPlcQueryError } from '@/lib/sy-plc-query';
 import { prisma } from '@/lib/prisma';
 import { getUTC8TimeString } from '@/lib/utils';
 
@@ -276,101 +278,26 @@ import { getUTC8TimeString } from '@/lib/utils';
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const model = searchParams.get('model');
-    const cageNodes = searchParams.get('cageNodes');
-    const angle = searchParams.get('angle');
-    const cageNum = searchParams.get('cageNum');
-    const actualRebarLength = searchParams.get('actualRebarLength');
-    const theoreticalLength = searchParams.get('theoreticalLength');
-    const difference = searchParams.get('difference');
-    const totalNodes = searchParams.get('totalNodes');
-    const createdAtStart = searchParams.get('createdAtStart');
-    const createdAtEnd = searchParams.get('createdAtEnd');
-    const updatedAtStart = searchParams.get('updatedAtStart');
-    const updatedAtEnd = searchParams.get('updatedAtEnd');
-    
-    // 分页参数
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 1000); // 最大1000条
-    const skip = (page - 1) * limit;
-
-    let whereClause: any = {};
-
-    // 精确匹配的数值字段
-    if (model !== null) {
-      whereClause.modelD2040 = parseFloat(model);
-    }
-    if (cageNodes !== null) {
-      whereClause.cageNodesD2044 = parseFloat(cageNodes);
-    }
-    if (angle !== null) {
-      whereClause.spindleAngleD4012 = parseFloat(angle);
-    }
-    if (cageNum !== null) {
-      whereClause.cageNumD2048 = parseFloat(cageNum);
-    }
-
-    // 模糊搜索的数值字段（使用字符串包含匹配）
-    if (actualRebarLength) {
-      whereClause.actualRebarLength = {
-        not: null,
-        // 将数值转为字符串进行模糊匹配
-        // 注意：这种方法在大数据集上可能性能较差，建议根据实际需求调整
-      };
-    }
-    if (theoreticalLength) {
-      whereClause.theoreticalLength = {
-        // 对于模糊搜索，我们可以使用范围查询
-        gte: parseFloat(theoreticalLength) * 0.9,
-        lte: parseFloat(theoreticalLength) * 1.1
-      };
-    }
-    if (difference) {
-      whereClause.difference = {
-        not: null
-      };
-    }
-    if (totalNodes) {
-      whereClause.totalNodesD2052 = {
-        not: null
-      };
-    }
-
-    // 时间范围查询
-    if (createdAtStart || createdAtEnd) {
-      whereClause.createdAt = {};
-      if (createdAtStart) {
-        whereClause.createdAt.gte = new Date(createdAtStart);
-      }
-      if (createdAtEnd) {
-        whereClause.createdAt.lte = new Date(createdAtEnd + 'T23:59:59.999Z');
-      }
-    }
-    
-    if (updatedAtStart || updatedAtEnd) {
-      whereClause.updatedAt = {};
-      if (updatedAtStart) {
-        whereClause.updatedAt.gte = new Date(updatedAtStart);
-      }
-      if (updatedAtEnd) {
-        whereClause.updatedAt.lte = new Date(updatedAtEnd + 'T23:59:59.999Z');
-      }
-    }
-
-    // 并行查询数据和总数
-    const [data, totalCount] = await Promise.all([
-      prisma.syPlc.findMany({
-        where: whereClause,
-        orderBy: {
-          createdAt: 'desc'
-        },
-        skip,
-        take: limit
-      }),
-      prisma.syPlc.count({
-        where: whereClause
-      })
+    const { page, limit, skip } = parseSyPlcPagination(searchParams);
+    const filters = buildSyPlcWhere(searchParams);
+    // 导出按批次读取时无需每一批都重复统计总数。
+    const includeTotal = searchParams.get('includeTotal') !== 'false';
+    const cursor = searchParams.get('cursor');
+    if (cursor && (includeTotal || page !== 1)) throw new SyPlcQueryError('导出游标只能用于不统计总数的顺序读取');
+    const where = applySyPlcCursor(filters, cursor);
+    const [rows, counts] = await Promise.all([
+      prisma.$queryRaw<SyPlc[]>(Prisma.sql`
+        SELECT * FROM sy_plc ${where}
+        ORDER BY "createdAt" DESC, "id" DESC LIMIT ${includeTotal ? limit : limit + 1} OFFSET ${skip}
+      `),
+      includeTotal
+        ? prisma.$queryRaw<{ count: bigint }[]>(Prisma.sql`SELECT COUNT(*) AS count FROM sy_plc ${where}`)
+        : Promise.resolve(undefined)
     ]);
+    const totalCount = counts ? Number(counts[0].count) : undefined;
+    const data = rows.slice(0, limit);
+    const hasNextPage = totalCount === undefined ? rows.length > limit : skip + limit < totalCount;
+    const last = data.at(-1);
 
     return NextResponse.json({
       success: true,
@@ -379,8 +306,10 @@ export async function GET(request: NextRequest) {
       totalCount,
       page,
       limit,
-      totalPages: Math.ceil(totalCount / limit),
-      hasNextPage: skip + limit < totalCount,
+      totalPages: totalCount === undefined ? undefined : Math.ceil(totalCount / limit),
+      hasNextPage,
+      nextCursor: !includeTotal && hasNextPage && last
+        ? JSON.stringify({ createdAt: last.createdAt.getTime(), id: last.id }) : undefined,
       hasPreviousPage: page > 1,
       timestamp: getUTC8TimeString()
     });
@@ -388,9 +317,9 @@ export async function GET(request: NextRequest) {
     console.error('查询SyPlc数据失败:', error);
     return NextResponse.json({
       success: false,
-      error: error instanceof Error ? error.message : '查询数据失败',
+      error: error instanceof SyPlcQueryError ? error.message : '查询数据库记录失败，请稍后重试或联系管理员查看服务端日志',
       timestamp: getUTC8TimeString()
-    }, { status: 500 });
+    }, { status: error instanceof SyPlcQueryError ? 400 : 500 });
   }
 }
 
@@ -609,87 +538,13 @@ export async function DELETE(request: NextRequest) {
       const { ids } = body;
 
       if (deleteFiltered) {
-        // 删除搜索结果 - 使用与GET相同的查询条件
-        const model = searchParams.get('model');
-        const cageNodes = searchParams.get('cageNodes');
-        const angle = searchParams.get('angle');
-        const cageNum = searchParams.get('cageNum');
-        const actualRebarLength = searchParams.get('actualRebarLength');
-        const theoreticalLength = searchParams.get('theoreticalLength');
-        const difference = searchParams.get('difference');
-        const totalNodes = searchParams.get('totalNodes');
-        const createdAtStart = searchParams.get('createdAtStart');
-        const createdAtEnd = searchParams.get('createdAtEnd');
-        const updatedAtStart = searchParams.get('updatedAtStart');
-        const updatedAtEnd = searchParams.get('updatedAtEnd');
-
-        let whereClause: any = {};
-
-        // 构建与GET相同的查询条件
-        if (model !== null) {
-          whereClause.modelD2040 = parseFloat(model);
-        }
-        if (cageNodes !== null) {
-          whereClause.cageNodesD2044 = parseFloat(cageNodes);
-        }
-        if (angle !== null) {
-          whereClause.spindleAngleD4012 = parseFloat(angle);
-        }
-        if (cageNum !== null) {
-          whereClause.cageNumD2048 = parseFloat(cageNum);
-        }
-
-        if (actualRebarLength) {
-          whereClause.actualRebarLength = {
-            not: null,
-          };
-        }
-        if (theoreticalLength) {
-          whereClause.theoreticalLength = {
-            gte: parseFloat(theoreticalLength) * 0.9,
-            lte: parseFloat(theoreticalLength) * 1.1
-          };
-        }
-        if (difference) {
-          whereClause.difference = {
-            not: null
-          };
-        }
-        if (totalNodes) {
-          whereClause.totalNodesD2052 = {
-            not: null
-          };
-        }
-
-        // 时间范围查询
-        if (createdAtStart || createdAtEnd) {
-          whereClause.createdAt = {};
-          if (createdAtStart) {
-            whereClause.createdAt.gte = new Date(createdAtStart);
-          }
-          if (createdAtEnd) {
-            whereClause.createdAt.lte = new Date(createdAtEnd + 'T23:59:59.999Z');
-          }
-        }
-        
-        if (updatedAtStart || updatedAtEnd) {
-          whereClause.updatedAt = {};
-          if (updatedAtStart) {
-            whereClause.updatedAt.gte = new Date(updatedAtStart);
-          }
-          if (updatedAtEnd) {
-            whereClause.updatedAt.lte = new Date(updatedAtEnd + 'T23:59:59.999Z');
-          }
-        }
-
-        const result = await prisma.syPlc.deleteMany({
-          where: whereClause
-        });
+        const where = buildSyPlcWhere(searchParams);
+        const count = await prisma.$executeRaw(Prisma.sql`DELETE FROM sy_plc ${where}`);
 
         return NextResponse.json({
           success: true,
-          message: `成功删除 ${result.count} 条搜索结果记录`,
-          deletedCount: result.count,
+          message: `成功删除 ${count} 条搜索结果记录`,
+          deletedCount: count,
           timestamp: getUTC8TimeString()
         });
       } else if (ids && Array.isArray(ids) && ids.length > 0) {
@@ -717,22 +572,26 @@ export async function DELETE(request: NextRequest) {
       }
     }
 
-    // 删除单条记录
-    await prisma.syPlc.delete({
+    // 只返回删除数量，避免旧库空字段的反序列化错误；重复删除也可安全成功。
+    const result = await prisma.syPlc.deleteMany({
       where: { id }
     });
 
     return NextResponse.json({
       success: true,
-      message: '删除SyPlc数据记录成功',
+      message: result.count > 0 ? '删除SyPlc数据记录成功' : '记录已不存在，无需重复删除',
+      deletedCount: result.count,
       timestamp: getUTC8TimeString()
     });
   } catch (error) {
     console.error('删除SyPlc数据失败:', error);
+    const errorCode = error instanceof Prisma.PrismaClientKnownRequestError ? error.code : undefined;
     return NextResponse.json({
       success: false,
-      error: error instanceof Error ? error.message : '删除数据失败',
+      error: error instanceof SyPlcQueryError ? error.message
+        : `删除数据失败${errorCode ? `（${errorCode}）` : ''}，请稍后重试或联系管理员查看服务端日志`,
+      errorCode,
       timestamp: getUTC8TimeString()
-    }, { status: 500 });
+    }, { status: error instanceof SyPlcQueryError ? 400 : 500 });
   }
 }

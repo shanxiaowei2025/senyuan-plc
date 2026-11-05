@@ -9,6 +9,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "test:records": "tsx --test tests/sy-plc-records.test.ts",
     "test:plc": "tsx --test tests/plc-compensation.test.ts tests/plc-rule2.test.ts",
     "db:push": "prisma db push",
     "db:generate": "prisma generate",

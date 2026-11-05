@@ -132,13 +132,11 @@ export function PLCProvider({ children }: { children: ReactNode }) {
         if (response.ok) {
           const result = await response.json();
           if (result.success) {
-            // 如果API状态与当前状态不同，则更新
-            if (result.data.isConnected !== status.isConnected) {
-              setIsConnected(result.data.isConnected);
-              setIsConnecting(result.data.isConnecting);
-              setConnectionError(result.data.connectionError);
-              console.log('已同步PLC连接状态:', result.data);
-            }
+            // 同步最新状态，不能与 effect 首次执行时捕获的 status 比较。
+            // React 会跳过值未变化的更新，同时保证断开、重连和错误状态都能同步。
+            setIsConnected(result.data.isConnected);
+            setIsConnecting(result.data.isConnecting);
+            setConnectionError(result.data.connectionError);
           }
         }
       } catch (error) {
@@ -377,4 +375,4 @@ export function usePLC() {
     throw new Error('usePLC必须在PLCProvider内部使用')
   }
   return context
-} 
+}

@@ -139,5 +139,7 @@ model SyPlc {
   @@index([createdAt])
   @@index([modelD2040])
   @@index([createdAt, modelD2040])
+  @@index([createdAt, id])
+  @@index([modelD2040, createdAt, id])
   @@map("sy_plc")
 }

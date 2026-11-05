@@ -108,6 +108,23 @@ pnpm dev
 
 访问 [http://localhost:3001](http://localhost:3001) 查看应用。
 
+### 现场已有数据库的查询性能更新
+
+更新代码后，在现场项目目录执行以下命令，为原有数据库补建分页查询索引：
+
+```bash
+pnpm exec prisma db execute --file prisma/migrations/20261105070000_sy_plc_pagination_indexes/migration.sql --schema prisma/schema.prisma
+```
+
+该脚本仅新增索引，可重复执行。数据库记录页按每页 10 条从服务端加载，搜索在停止输入 300 毫秒后执行；导出会单独分批读取全部匹配记录。
+
+现场运行使用生产构建，避免开发模式在首次访问时编译页面：
+
+```bash
+pnpm build
+pnpm exec next start -p 3001
+```
+
 ## 📊 功能特性
 
 ### 已实现功能

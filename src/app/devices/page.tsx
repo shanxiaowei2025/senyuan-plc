@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import * as XLSX from 'xlsx'
 import { MainLayout } from "@/components/layout/main-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -9,10 +8,10 @@ import { Input } from "@/components/ui/input"
 import { usePLC } from "@/lib/plc-context"
 import { PLCStatusCard } from "@/components/devices/plc-status-card"
 import { DeviceLogTab } from "@/components/devices/device-log-tab"
-import { DatabaseRecordTable } from "@/components/devices/database-record-table"
+import { useSyPlcRecords } from "@/hooks/use-sy-plc-records"
+import { buildSyPlcSearchParams, getVisiblePages } from "@/lib/sy-plc-search"
 import { 
   useFilteredLogs, 
-  useFilteredSyPlcRecords, 
   usePaginationData, 
   useConnectionStatus 
 } from "@/hooks/use-optimized-plc"
@@ -192,9 +191,6 @@ export default function DevicesPage() {
   const [logFilter, setLogFilter] = useState('all')
   const [isLoading, setIsLoading] = useState(false)
   const [databaseRecords, setDatabaseRecords] = useState<DatabaseRecord[]>([])
-  const [syPlcRecords, setSyPlcRecords] = useState<SyPlcRecord[]>([])
-  const [isLoadingRecords, setIsLoadingRecords] = useState(false)
-  const [currentPage, setCurrentPage] = useState(1)
   const recordsPerPage = 10
 
   // 添加增删改相关状态
@@ -229,6 +225,12 @@ export default function DevicesPage() {
   })
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
+  const filterQuery = buildSyPlcSearchParams(isAdvancedSearchOpen ? advancedSearchFields : {}).toString()
+  const {
+    records: currentRecords, totalCount: totalRecordsCount, totalPages, currentPage,
+    isLoading: isLoadingRecords, error: recordsError, setCurrentPage, refresh: fetchDatabaseRecords
+  } = useSyPlcRecords<SyPlcRecord>(activeTab === 'database' && !!selectedDevice, filterQuery, recordsPerPage)
 
   // 日志分页相关状态
   const [currentLogPage, setCurrentLogPage] = useState(1)
@@ -285,7 +287,6 @@ export default function DevicesPage() {
   
   // 使用优化的hooks
   const filteredLogs = useFilteredLogs(logs, searchTerm, logFilter)
-  const filteredSyPlcRecords = useFilteredSyPlcRecords(syPlcRecords, isAdvancedSearchOpen, advancedSearchFields)
   const connectionStatus = useConnectionStatus(
     plcContext.isConnected,
     plcContext.isConnecting,
@@ -302,15 +303,6 @@ export default function DevicesPage() {
     hasPreviousPage: hasPreviousLogPage
   } = logPaginationData
 
-  // 数据库记录分页数据
-  const dbPaginationData = usePaginationData(filteredSyPlcRecords, currentPage, recordsPerPage)
-  const {
-    totalPages,
-    currentItems: currentRecords,
-    hasNextPage,
-    hasPreviousPage
-  } = dbPaginationData
-  
   // 添加PLC读写相关状态
   const [floatRegisterAddress, setFloatRegisterAddress] = useState<number | string>(100)
   const [floatRegisterValue, setFloatRegisterValue] = useState<number | null>(null)
@@ -504,32 +496,6 @@ export default function DevicesPage() {
       ...prev,
       [field]: value
     }))
-  }
-
-  // 执行高级搜索
-  const performAdvancedSearch = () => {
-    if (isAdvancedSearchOpen) {
-      // 构建API搜索参数
-      const apiSearchParams: Record<string, string> = {}
-      
-      // 映射前端字段到API参数
-      if (advancedSearchFields.modelD2040) apiSearchParams.model = advancedSearchFields.modelD2040
-      if (advancedSearchFields.cageNodesD2044) apiSearchParams.cageNodes = advancedSearchFields.cageNodesD2044
-      if (advancedSearchFields.cageNumD2048) apiSearchParams.cageNum = advancedSearchFields.cageNumD2048
-      if (advancedSearchFields.spindleAngleD4012) apiSearchParams.angle = advancedSearchFields.spindleAngleD4012
-      if (advancedSearchFields.actualRebarLength) apiSearchParams.actualRebarLength = advancedSearchFields.actualRebarLength
-      if (advancedSearchFields.theoreticalLength) apiSearchParams.theoreticalLength = advancedSearchFields.theoreticalLength
-      if (advancedSearchFields.difference) apiSearchParams.difference = advancedSearchFields.difference
-      if (advancedSearchFields.totalNodesD2052) apiSearchParams.totalNodes = advancedSearchFields.totalNodesD2052
-      if (advancedSearchFields.createdAtStart) apiSearchParams.createdAtStart = advancedSearchFields.createdAtStart
-      if (advancedSearchFields.createdAtEnd) apiSearchParams.createdAtEnd = advancedSearchFields.createdAtEnd
-      if (advancedSearchFields.updatedAtStart) apiSearchParams.updatedAtStart = advancedSearchFields.updatedAtStart
-      if (advancedSearchFields.updatedAtEnd) apiSearchParams.updatedAtEnd = advancedSearchFields.updatedAtEnd
-
-      fetchDatabaseRecords(apiSearchParams)
-    } else {
-      fetchDatabaseRecords()
-    }
   }
 
   // 清空高级搜索
@@ -1217,40 +1183,6 @@ export default function DevicesPage() {
     }
   }, [plcStatus])
 
-  // 获取SyPlc数据库记录
-  const fetchDatabaseRecords = async (searchParams?: Record<string, string>) => {
-    if (!selectedDevice) return
-    
-    setIsLoadingRecords(true)
-    try {
-      // 构建查询参数
-      const queryParams = new URLSearchParams()
-      if (searchParams) {
-        Object.entries(searchParams).forEach(([key, value]) => {
-          if (value && value.trim()) {
-            queryParams.append(key, value.trim())
-          }
-        })
-      }
-      
-      const url = `/api/sy-plc${queryParams.toString() ? `?${queryParams.toString()}` : ''}`
-      const response = await fetch(url)
-      const data = await response.json()
-      
-      if (data.success && data.data) {
-        // 直接使用SyPlc原始数据
-        setSyPlcRecords(data.data)
-        // 重置分页到第一页
-        setCurrentPage(1)
-      }
-    } catch (error) {
-      console.error('获取数据库记录失败:', error)
-      setSyPlcRecords([])
-    } finally {
-      setIsLoadingRecords(false)
-    }
-  }
-
   // 设置默认选中设备
   useEffect(() => {
     if (!selectedDevice) {
@@ -1267,32 +1199,6 @@ export default function DevicesPage() {
       })
     }
   }, [selectedDevice])
-
-  // 当切换到数据库记录标签时获取数据
-  useEffect(() => {
-    if (activeTab === 'database' && selectedDevice) {
-      fetchDatabaseRecords()
-    }
-  }, [activeTab, selectedDevice])
-
-  // 自动搜索功能：当高级搜索字段变化时，延迟执行搜索
-  useEffect(() => {
-    if (!isAdvancedSearchOpen || activeTab !== 'database') return
-
-    const hasSearchTerms = Object.values(advancedSearchFields).some(value => value.trim() !== '')
-    if (!hasSearchTerms) {
-      fetchDatabaseRecords() // 如果没有搜索条件，获取所有数据
-      return
-    }
-
-    const timeoutId = setTimeout(() => {
-      performAdvancedSearch()
-    }, 800) // 800ms 延迟，避免频繁请求
-
-    return () => clearTimeout(timeoutId)
-  }, [advancedSearchFields, isAdvancedSearchOpen, activeTab])
-
-  // 过滤数据记录逻辑已移至优化的hooks中
 
   // 验证表单数据
   const validateForm = (data: typeof formData) => {
@@ -1485,7 +1391,7 @@ export default function DevicesPage() {
 
   // 删除检索结果
   const handleDeleteFilteredRecords = async () => {
-    const recordCount = filteredSyPlcRecords.length
+    const recordCount = totalRecordsCount
     
     if (recordCount === 0) {
       alert('没有可删除的记录')
@@ -1497,47 +1403,8 @@ export default function DevicesPage() {
     }
     
     try {
-      // 构建查询参数，与当前搜索条件保持一致
-      const params = new URLSearchParams()
-      params.append('deleteFiltered', 'true')
-      
-      // 添加搜索条件
-      if (advancedSearchFields.modelD2040) {
-        params.append('model', advancedSearchFields.modelD2040)
-      }
-      if (advancedSearchFields.cageNodesD2044) {
-        params.append('cageNodes', advancedSearchFields.cageNodesD2044)
-      }
-      if (advancedSearchFields.cageNumD2048) {
-        params.append('cageNum', advancedSearchFields.cageNumD2048)
-      }
-      if (advancedSearchFields.spindleAngleD4012) {
-        params.append('angle', advancedSearchFields.spindleAngleD4012)
-      }
-      if (advancedSearchFields.actualRebarLength) {
-        params.append('actualRebarLength', advancedSearchFields.actualRebarLength)
-      }
-      if (advancedSearchFields.theoreticalLength) {
-        params.append('theoreticalLength', advancedSearchFields.theoreticalLength)
-      }
-      if (advancedSearchFields.difference) {
-        params.append('difference', advancedSearchFields.difference)
-      }
-      if (advancedSearchFields.totalNodesD2052) {
-        params.append('totalNodes', advancedSearchFields.totalNodesD2052)
-      }
-      if (advancedSearchFields.createdAtStart) {
-        params.append('createdAtStart', advancedSearchFields.createdAtStart)
-      }
-      if (advancedSearchFields.createdAtEnd) {
-        params.append('createdAtEnd', advancedSearchFields.createdAtEnd)
-      }
-      if (advancedSearchFields.updatedAtStart) {
-        params.append('updatedAtStart', advancedSearchFields.updatedAtStart)
-      }
-      if (advancedSearchFields.updatedAtEnd) {
-        params.append('updatedAtEnd', advancedSearchFields.updatedAtEnd)
-      }
+      const params = new URLSearchParams(filterQuery)
+      params.set('deleteFiltered', 'true')
 
       const response = await fetch(`/api/sy-plc?${params.toString()}`, {
         method: 'DELETE',
@@ -1561,19 +1428,34 @@ export default function DevicesPage() {
   }
 
   // 导出Excel文件
-  const exportToExcel = () => {
+  const exportToExcel = async () => {
+    if (isExporting) return
+    setIsExporting(true)
     try {
-      // 获取当前筛选后的数据
-      const dataToExport = filteredSyPlcRecords.map((record, index) => ({
+      // 只有主动导出时才读取全部结果并加载 Excel 库，日常浏览只请求当前页。
+      const XLSX = await import('xlsx')
+      const records: SyPlcRecord[] = []
+      const params = new URLSearchParams(filterQuery)
+      params.set('limit', '1000')
+      params.set('includeTotal', 'false')
+      for (;;) {
+        const response = await fetch(`/api/sy-plc?${params}`)
+        const result = await response.json()
+        if (!response.ok || !result.success) throw new Error(result.error || '读取导出数据失败')
+        records.push(...result.data)
+        if (!result.hasNextPage) break
+        params.set('cursor', result.nextCursor)
+      }
+      const dataToExport = records.map((record, index) => ({
         '序号': index + 1,
         '型号 (modelD2040)': record.modelD2040,
         '笼子节点数 (cageNodesD2044)': record.cageNodesD2044,
         '笼子编号 (cageNumD2048)': record.cageNumD2048,
         '主轴角度 (spindleAngleD4012)': record.spindleAngleD4012,
         '实际钢筋长度': record.actualRebarLength,
-        '理论长度': record.theoreticalLength || '',
-        '差值': record.difference || '',
-        '总节数 (totalNodesD2052)': record.totalNodesD2052 || '',
+        '理论长度': record.theoreticalLength ?? '',
+        '差值': record.difference ?? '',
+        '总节数 (totalNodesD2052)': record.totalNodesD2052 ?? '',
         '创建时间': new Date(record.createdAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }),
         '更新时间': new Date(record.updatedAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })
       }))
@@ -1614,13 +1496,10 @@ export default function DevicesPage() {
     } catch (error) {
       console.error('导出Excel失败:', error)
       alert('导出Excel失败，请重试')
+    } finally {
+      setIsExporting(false)
     }
   }
-
-  // 当搜索条件改变时，重置到第一页
-  useEffect(() => {
-    setCurrentPage(1)
-  }, [advancedSearchFields])
 
   return (
     <MainLayout>
@@ -1946,9 +1825,9 @@ export default function DevicesPage() {
                 <div className="flex justify-between items-center">
                   <div className="flex items-center space-x-4">
                     <h3 className="text-lg font-medium text-gray-900">SyPlc数据库记录</h3>
-                    {filteredSyPlcRecords.length > 0 && (
+                    {totalRecordsCount > 0 && (
                       <span className="text-sm text-gray-500">
-                        共 {filteredSyPlcRecords.length} 条记录，第 {currentPage} / {totalPages} 页
+                        共 {totalRecordsCount} 条记录，第 {currentPage} / {totalPages} 页
                       </span>
                     )}
                   </div>
@@ -1994,17 +1873,17 @@ export default function DevicesPage() {
                       variant="outline" 
                       size="sm"
                       onClick={exportToExcel}
-                      disabled={filteredSyPlcRecords.length === 0}
+                      disabled={totalRecordsCount === 0 || isLoadingRecords || !!recordsError || isExporting}
                     >
                       <Upload className="h-4 w-4 mr-2" />
-                      导出
+                      {isExporting ? '正在导出...' : '导出'}
                     </Button>
                     {isAdvancedSearchOpen && (
                       <Button 
                         variant="outline" 
                         size="sm"
                         onClick={handleDeleteFilteredRecords}
-                        disabled={filteredSyPlcRecords.length === 0}
+                        disabled={totalRecordsCount === 0 || isLoadingRecords || !!recordsError || isExporting}
                         className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200 hover:border-red-300"
                       >
                         <Trash2 className="h-4 w-4 mr-2" />
@@ -2140,6 +2019,11 @@ export default function DevicesPage() {
                   </Card>
                 )}
                 
+                {recordsError && (
+                  <div role="alert" className="rounded-md bg-red-50 p-3 text-sm text-red-700">
+                    {recordsError}，请点击刷新重试。
+                  </div>
+                )}
                 {isLoadingRecords ? (
                   <div className="text-center py-8 text-gray-500">
                     <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2" />
@@ -2164,15 +2048,15 @@ export default function DevicesPage() {
                       </tr>
                     </thead>
                     <tbody>
-                        {filteredSyPlcRecords.length === 0 ? (
+                        {totalRecordsCount === 0 ? (
                           <tr>
                             <td colSpan={11} className="text-center py-8 text-gray-500">
                               {Object.values(advancedSearchFields).some(value => value.trim() !== '') ? '没有找到匹配的记录' : '暂无数据库记录'}
                           </td>
                         </tr>
                         ) : (
-                          currentRecords.map((record: any, index: number) => (
-                            <tr key={`syplc-record-${record.id}-${index}`} className="border-b border-gray-100 hover:bg-gray-50">
+                          currentRecords.map((record) => (
+                            <tr key={record.id} className="border-b border-gray-100 hover:bg-gray-50">
                               <td className="py-3 px-4 text-sm text-gray-900 text-center">{record.modelD2040}</td>
                               <td className="py-3 px-4 text-sm text-gray-900 text-center">{record.cageNodesD2044}</td>
                               <td className="py-3 px-4 text-sm text-gray-900 text-center">{record.cageNumD2048}</td>
@@ -2212,14 +2096,14 @@ export default function DevicesPage() {
                 )}
                 
                 {/* 分页控制 */}
-                {filteredSyPlcRecords.length > recordsPerPage && (
+                {totalRecordsCount > recordsPerPage && (
                   <div className="flex items-center justify-between border-t border-gray-200 bg-white px-4 py-3 sm:px-6">
                     <div className="flex flex-1 justify-between sm:hidden">
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={goToPreviousPage}
-                        disabled={currentPage === 1}
+                        disabled={currentPage === 1 || isLoadingRecords}
                       >
                         上一页
                       </Button>
@@ -2227,7 +2111,7 @@ export default function DevicesPage() {
                         variant="outline"
                         size="sm"
                         onClick={goToNextPage}
-                        disabled={currentPage === totalPages}
+                        disabled={currentPage === totalPages || isLoadingRecords}
                       >
                         下一页
                       </Button>
@@ -2236,8 +2120,8 @@ export default function DevicesPage() {
                       <div>
                         <p className="text-sm text-gray-700">
                                                       显示第 <span className="font-medium">{(currentPage - 1) * recordsPerPage + 1}</span> 到{' '}
-                            <span className="font-medium">{Math.min(currentPage * recordsPerPage, filteredSyPlcRecords.length)}</span> 条，
-                          共 <span className="font-medium">{filteredSyPlcRecords.length}</span> 条记录
+                            <span className="font-medium">{Math.min(currentPage * recordsPerPage, totalRecordsCount)}</span> 条，
+                          共 <span className="font-medium">{totalRecordsCount}</span> 条记录
                         </p>
                       </div>
                       <div>
@@ -2246,7 +2130,7 @@ export default function DevicesPage() {
                             variant="outline"
                             size="sm"
                             onClick={goToPreviousPage}
-                            disabled={currentPage === 1}
+                            disabled={currentPage === 1 || isLoadingRecords}
                             className="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-600 bg-white ring-1 ring-inset ring-gray-300 hover:bg-blue-50 hover:text-blue-700 focus:z-20 focus:outline-offset-0 disabled:text-gray-300"
                           >
                             <ChevronLeft className="h-4 w-4" />
@@ -2254,49 +2138,26 @@ export default function DevicesPage() {
                           </Button>
                           
                           {/* 页码按钮 */}
-                          {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
-                            // 只显示当前页附近的页码
-                            if (
-                              page === 1 ||
-                              page === totalPages ||
-                              (page >= currentPage - 2 && page <= currentPage + 2)
-                            ) {
-                              return (
-                                <Button
-                                  key={page}
-                                  variant={page === currentPage ? "default" : "outline"}
-                                  size="sm"
-                                  onClick={() => goToPage(page)}
-                                  className={`relative inline-flex items-center px-4 py-2 text-sm font-semibold ${
-                                    page === currentPage
-                                      ? 'z-10 bg-blue-600 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600'
-                                      : 'text-gray-800 bg-white ring-1 ring-inset ring-gray-300 hover:bg-blue-50 hover:text-blue-700 focus:z-20 focus:outline-offset-0'
-                                  }`}
-                                >
-                                  {page}
-                                </Button>
-                              )
-                            } else if (
-                              page === currentPage - 3 ||
-                              page === currentPage + 3
-                            ) {
-                              return (
-                                <span
-                                  key={page}
-                                  className="relative inline-flex items-center px-4 py-2 text-sm font-semibold text-gray-700 ring-1 ring-inset ring-gray-300 focus:outline-offset-0"
-                                >
-                                  ...
-                                </span>
-                              )
-                            }
-                            return null
-                          })}
+                          {getVisiblePages(currentPage, totalPages).map((page) => typeof page === 'number' ? (
+                            <Button
+                              key={page}
+                              variant={page === currentPage ? "default" : "outline"}
+                              size="sm"
+                              disabled={isLoadingRecords}
+                              onClick={() => goToPage(page)}
+                              aria-current={page === currentPage ? 'page' : undefined}
+                            >
+                              {page}
+                            </Button>
+                          ) : (
+                            <span key={page} className="px-4 py-2 text-sm text-gray-700">...</span>
+                          ))}
                           
                           <Button
                             variant="outline"
                             size="sm"
                             onClick={goToNextPage}
-                            disabled={currentPage === totalPages}
+                            disabled={currentPage === totalPages || isLoadingRecords}
                             className="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-600 bg-white ring-1 ring-inset ring-gray-300 hover:bg-blue-50 hover:text-blue-700 focus:z-20 focus:outline-offset-0 disabled:text-gray-300"
                           >
                             <span className="sr-only">下一页</span>
@@ -3191,4 +3052,4 @@ export default function DevicesPage() {
       </div>
     </MainLayout>
   )
-} 
+}
